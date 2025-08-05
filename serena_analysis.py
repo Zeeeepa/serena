@@ -717,13 +717,13 @@ class SerenaLSPAnalyzer:
             try:
                 diagnostics = []
                 
-                # Get diagnostics from LSP with enhanced error handling
+                # Method 1: Get diagnostics from LSP with enhanced error handling
                 try:
                     lsp_diagnostics = language_server.request_text_document_diagnostics(file_path)
                     if lsp_diagnostics:
                         diagnostics.extend(lsp_diagnostics)
                         if self.verbose:
-                            self.logger.debug(f"🔍 Found {len(lsp_diagnostics)} diagnostics in {os.path.basename(file_path)}")
+                            self.logger.debug(f"🔍 Primary: {len(lsp_diagnostics)} diagnostics in {os.path.basename(file_path)}")
                 except LSPError as lsp_err:
                     if self.verbose:
                         self.logger.debug(f"⚠️  LSP Error for {os.path.basename(file_path)}: {lsp_err}")
@@ -939,15 +939,22 @@ class SerenaLSPAnalyzer:
             end_line = end_pos.get('line', line)
             end_character = end_pos.get('character', character)
             
-            # Enhanced file path extraction and normalization
+            # Enhanced file path extraction - preserve full folder structure
             uri = diagnostic.get('uri', '')
             if uri.startswith('file://'):
-                file_path = uri[7:]  # Remove 'file://' prefix
-                # Try to make path relative to current working directory for cleaner display
+                full_file_path = uri[7:]  # Remove 'file://' prefix
+                
+                # Get path relative to project root for better readability while preserving folder structure
                 try:
-                    file_path = os.path.relpath(file_path)
-                except ValueError:
-                    pass  # Keep absolute path if relative conversion fails
+                    # Try to get path relative to the project root
+                    project_root = getattr(project, 'project_path', os.getcwd())
+                    if full_file_path.startswith(project_root):
+                        file_path = os.path.relpath(full_file_path, project_root)
+                    else:
+                        file_path = os.path.relpath(full_file_path)
+                except (ValueError, AttributeError):
+                    file_path = full_file_path  # Keep full absolute path if relative conversion fails
+                
                 file_name = os.path.basename(file_path)
             else:
                 file_path = 'unknown'
@@ -1030,14 +1037,15 @@ class SerenaLSPAnalyzer:
         error_count = len(processed_diagnostics)
         output_lines = [f"ERRORS: ['{error_count}']"]
         
-        # Add each formatted diagnostic with enhanced readability
+        # Add each formatted diagnostic with FULL location path, error type, error reason, severity
         for i, diag in enumerate(processed_diagnostics, 1):
-            # Format: ERROR #1: [file.py:line:col] Error message (severity: ERROR, code: errorCode, source: lsp)
-            diagnostic_line = f"ERROR #{i}: [{diag['file_name']}:{diag['location']}] {diag['error_reason']}"
-            if diag['code'] and diag['code'] != 'unknown':
-                diagnostic_line += f" (code: {diag['code']})"
-            if diag['severity'] != 'ERROR':
-                diagnostic_line += f" (severity: {diag['severity']})"
+            # Format: ERROR #1: [full/folder/path/file.py:line:col] | ERROR_TYPE: error_code | REASON: full error message | SEVERITY: ERROR
+            full_location = f"{diag['file_path']}:{diag['location']}"
+            error_type = diag['code'] if diag['code'] and diag['code'] != 'unknown' else 'UNKNOWN_ERROR'
+            error_reason = diag['error_reason']
+            severity = diag['severity']
+            
+            diagnostic_line = f"ERROR #{i}: [{full_location}] | ERROR_TYPE: {error_type} | REASON: {error_reason} | SEVERITY: {severity}"
             output_lines.append(diagnostic_line)
             output_lines.append("")  # Add blank line for readability
         
