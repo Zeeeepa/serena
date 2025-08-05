@@ -239,10 +239,10 @@ class SerenaLSPAnalyzer:
         self.logger.info("🔍 Detecting repository language...")
         
         # Language detection based on file extensions and common files
+        # Using only languages available in the SolidLSP Language enum
         language_indicators = {
             Language.PYTHON: ['.py', 'requirements.txt', 'setup.py', 'pyproject.toml'],
-            Language.TYPESCRIPT: ['.ts', '.tsx', 'tsconfig.json'],
-            Language.JAVASCRIPT: ['.js', '.jsx', 'package.json', 'yarn.lock'],
+            Language.TYPESCRIPT: ['.ts', '.tsx', '.js', '.jsx', 'tsconfig.json', 'package.json', 'yarn.lock'],
             Language.JAVA: ['.java', 'pom.xml', 'build.gradle'],
             Language.CSHARP: ['.cs', '.csproj', '.sln'],
             Language.CPP: ['.cpp', '.cc', '.cxx', '.h', '.hpp', 'CMakeLists.txt'],
@@ -250,6 +250,11 @@ class SerenaLSPAnalyzer:
             Language.GO: ['.go', 'go.mod'],
             Language.PHP: ['.php', 'composer.json'],
             Language.RUBY: ['.rb', 'Gemfile'],
+            Language.KOTLIN: ['.kt', '.kts'],
+            Language.DART: ['.dart', 'pubspec.yaml'],
+            Language.CLOJURE: ['.clj', '.cljs', '.cljc', 'project.clj'],
+            Language.ELIXIR: ['.ex', '.exs', 'mix.exs'],
+            Language.TERRAFORM: ['.tf', '.tfvars'],
         }
         
         file_counts = {lang: 0 for lang in language_indicators.keys()}
@@ -1371,7 +1376,7 @@ def main():
     
     # Run the comprehensive analysis
     try:
-        with SerenaAnalyzer(
+        with SerenaLSPAnalyzer(
             verbose=args.verbose, 
             timeout=args.timeout,
             max_workers=args.max_workers
