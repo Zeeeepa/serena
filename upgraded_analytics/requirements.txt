@@ -1,0 +1,24 @@
+# Core dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+click>=8.1.0
+
+# Code analysis dependencies
+codegen>=0.1.0
+serena-agent>=0.1.3
+
+# Utility dependencies
+requests>=2.32.0
+python-dotenv>=1.0.0
+pathspec>=0.12.1
+gitpython>=3.1.40
+tqdm>=4.67.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.7.0
+
