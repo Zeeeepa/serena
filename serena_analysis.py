@@ -959,14 +959,12 @@ class SerenaLSPAnalyzer:
             code = diagnostic.get('code', 'unknown')
             source = diagnostic.get('source', 'unknown')
             
-            # Clean and truncate message for better readability
+            # Clean message for better readability
             clean_message = message.replace('\n', ' ').replace('\r', ' ')
             # Remove excessive whitespace
             clean_message = ' '.join(clean_message.split())
             
-            # Truncate very long messages but preserve important information
-            if len(clean_message) > 200:
-                clean_message = clean_message[:197] + "..."
+            # Keep full message - no truncation for comprehensive error analysis
             
             # Enhanced severity mapping
             severity_map = {
@@ -1032,10 +1030,16 @@ class SerenaLSPAnalyzer:
         error_count = len(processed_diagnostics)
         output_lines = [f"ERRORS: ['{error_count}']"]
         
-        # Add each formatted diagnostic
+        # Add each formatted diagnostic with enhanced readability
         for i, diag in enumerate(processed_diagnostics, 1):
-            diagnostic_line = f"{i}. '{diag['location']}' '{diag['file_name']}' '{diag['error_reason']}' '{diag['other_types']}'"
+            # Format: ERROR #1: [file.py:line:col] Error message (severity: ERROR, code: errorCode, source: lsp)
+            diagnostic_line = f"ERROR #{i}: [{diag['file_name']}:{diag['location']}] {diag['error_reason']}"
+            if diag['code'] and diag['code'] != 'unknown':
+                diagnostic_line += f" (code: {diag['code']})"
+            if diag['severity'] != 'ERROR':
+                diagnostic_line += f" (severity: {diag['severity']})"
             output_lines.append(diagnostic_line)
+            output_lines.append("")  # Add blank line for readability
         
         # Add enhanced summary statistics if verbose mode or many errors
         if self.verbose or error_count > 50:
