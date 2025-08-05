@@ -1042,6 +1042,207 @@ class SerenaLSPAnalyzer:
 
         return "\n".join(output_lines)
 
+    def _collect_symbol_analysis(self, project: Project, language_server: SolidLanguageServer) -> None:
+        """Collect comprehensive symbol analysis from the project."""
+        try:
+            symbol_start_time = time.time()
+            self.logger.info("🔍 Starting comprehensive symbol analysis...")
+            
+            # Get all source files for symbol analysis
+            source_files = project.gather_source_files()
+            symbol_files_processed = 0
+            
+            for file_path in source_files[:50]:  # Limit to first 50 files for performance
+                try:
+                    # Get document symbols
+                    symbols = self._get_document_symbols(language_server, file_path)
+                    if symbols:
+                        self.collected_symbols.extend(symbols)
+                        symbol_files_processed += 1
+                    
+                    # Get symbol references for key symbols
+                    if len(self.collected_symbols) > 0:
+                        self._collect_symbol_references(language_server, file_path)
+                    
+                except Exception as e:
+                    self.logger.debug(f"Error analyzing symbols in {file_path}: {e}")
+                    continue
+            
+            symbol_time = time.time() - symbol_start_time
+            self.performance_stats["symbol_analysis_time"] = symbol_time
+            self.total_symbols = len(self.collected_symbols)
+            
+            self.logger.info(f"✅ Symbol analysis complete: {self.total_symbols} symbols from {symbol_files_processed} files in {symbol_time:.2f}s")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during symbol analysis: {e}")
+
+    def _get_document_symbols(self, language_server: SolidLanguageServer, file_path: str) -> List[EnhancedSymbolInfo]:
+        """Get document symbols from a file using LSP."""
+        try:
+            # Request document symbols from LSP server
+            symbols_response = language_server.request_text_document_symbols(file_path)
+            enhanced_symbols = []
+            
+            for symbol_data in symbols_response:
+                try:
+                    # Extract symbol information
+                    symbol_name = symbol_data.get("name", "unknown")
+                    symbol_kind = symbol_data.get("kind", SymbolKind.Variable)
+                    
+                    # Get location information
+                    location_data = symbol_data.get("location", {})
+                    if not location_data and "range" in symbol_data:
+                        # Some servers return range directly
+                        location_data = {
+                            "uri": f"file://{file_path}",
+                            "range": symbol_data["range"]
+                        }
+                    
+                    # Create enhanced symbol info
+                    enhanced_symbol = EnhancedSymbolInfo(
+                        name=symbol_name,
+                        kind=symbol_kind,
+                        location=location_data,
+                        container_name=symbol_data.get("containerName"),
+                        detail=symbol_data.get("detail"),
+                        documentation=self._extract_symbol_documentation(symbol_data),
+                        tags=symbol_data.get("tags", [])
+                    )
+                    
+                    enhanced_symbols.append(enhanced_symbol)
+                    
+                except Exception as e:
+                    self.logger.debug(f"Error processing symbol {symbol_data}: {e}")
+                    continue
+            
+            return enhanced_symbols
+            
+        except Exception as e:
+            self.logger.debug(f"Error getting document symbols for {file_path}: {e}")
+            return []
+
+    def _collect_symbol_references(self, language_server: SolidLanguageServer, file_path: str) -> None:
+        """Collect symbol references for important symbols."""
+        try:
+            # Get a few key symbols to analyze references for
+            key_symbols = [s for s in self.collected_symbols[-10:] if s.kind in [
+                SymbolKind.Function, SymbolKind.Class, SymbolKind.Method
+            ]]
+            
+            for symbol in key_symbols:
+                try:
+                    # Extract position from symbol location
+                    location = symbol.location
+                    if "range" in location and "start" in location["range"]:
+                        start_pos = location["range"]["start"]
+                        line = start_pos.get("line", 0)
+                        character = start_pos.get("character", 0)
+                        
+                        # Request references
+                        references = language_server.request_references(file_path, line, character)
+                        if references:
+                            self.symbol_references[symbol.name] = references
+                            
+                except Exception as e:
+                    self.logger.debug(f"Error getting references for symbol {symbol.name}: {e}")
+                    continue
+                    
+        except Exception as e:
+            self.logger.debug(f"Error collecting symbol references: {e}")
+
+    def _extract_symbol_documentation(self, symbol_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Extract documentation from symbol data."""
+        try:
+            # Check for documentation in various formats
+            if "documentation" in symbol_data:
+                doc = symbol_data["documentation"]
+                if isinstance(doc, str):
+                    return {"kind": "plaintext", "value": doc}
+                elif isinstance(doc, dict):
+                    return doc
+            
+            # Check for detail field as fallback
+            if "detail" in symbol_data and symbol_data["detail"]:
+                return {"kind": "plaintext", "value": symbol_data["detail"]}
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"Error extracting symbol documentation: {e}")
+            return None
+
+    def get_completion_analysis(self, language_server: SolidLanguageServer, file_path: str, line: int, character: int) -> List[Dict[str, Any]]:
+        """Get completion analysis at a specific position."""
+        try:
+            completions = language_server.request_completion(file_path, line, character)
+            enhanced_completions = []
+            
+            for completion in completions:
+                enhanced_completion = {
+                    "label": completion.get("label", ""),
+                    "kind": completion.get("kind", CompletionItemKind.Text),
+                    "detail": completion.get("detail", ""),
+                    "documentation": completion.get("documentation", ""),
+                    "insert_text": completion.get("insertText", completion.get("label", "")),
+                    "sort_text": completion.get("sortText", ""),
+                    "filter_text": completion.get("filterText", "")
+                }
+                enhanced_completions.append(enhanced_completion)
+            
+            return enhanced_completions
+            
+        except Exception as e:
+            self.logger.debug(f"Error getting completions: {e}")
+            return []
+
+    def get_hover_analysis(self, language_server: SolidLanguageServer, file_path: str, line: int, character: int) -> Optional[Dict[str, Any]]:
+        """Get hover information at a specific position."""
+        try:
+            hover_info = language_server.request_hover(file_path, line, character)
+            if hover_info:
+                return {
+                    "contents": hover_info.get("contents", ""),
+                    "range": hover_info.get("range", {}),
+                    "markup_kind": hover_info.get("contents", {}).get("kind", "plaintext") if isinstance(hover_info.get("contents"), dict) else "plaintext"
+                }
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"Error getting hover info: {e}")
+            return None
+
+    def get_signature_analysis(self, language_server: SolidLanguageServer, file_path: str, line: int, character: int) -> Optional[Dict[str, Any]]:
+        """Get signature help at a specific position."""
+        try:
+            signature_help = language_server.request_signature_help(file_path, line, character)
+            if signature_help:
+                signatures = signature_help.get("signatures", [])
+                active_signature = signature_help.get("activeSignature", 0)
+                active_parameter = signature_help.get("activeParameter", 0)
+                
+                enhanced_signatures = []
+                for sig in signatures:
+                    enhanced_sig = {
+                        "label": sig.get("label", ""),
+                        "documentation": sig.get("documentation", ""),
+                        "parameters": sig.get("parameters", []),
+                        "active_parameter": active_parameter
+                    }
+                    enhanced_signatures.append(enhanced_sig)
+                
+                return {
+                    "signatures": enhanced_signatures,
+                    "active_signature": active_signature,
+                    "active_parameter": active_parameter
+                }
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"Error getting signature help: {e}")
+            return None
+
     def analyze_repository(
         self,
         repo_url_or_path: str,
@@ -1130,6 +1331,11 @@ class SerenaLSPAnalyzer:
             self.logger.info("🔍 Beginning comprehensive Serena LSP diagnostic collection...")
             diagnostics = self.collect_diagnostics(project, language_server, severity)
 
+            # Step 5.5: Symbol analysis if enabled
+            if self.enable_symbols:
+                self.logger.info("🔍 Performing comprehensive symbol analysis...")
+                self._collect_symbol_analysis(project, language_server)
+
             # Step 6: Format results
             self.logger.info("📋 Formatting comprehensive results...")
             result = self.format_diagnostic_output(diagnostics)
@@ -1145,6 +1351,9 @@ class SerenaLSPAnalyzer:
             self.logger.info(f"   ⚙️  Project configuration: {self.performance_stats['setup_time']:.2f}s")
             self.logger.info(f"   🔧 LSP server startup: {self.performance_stats['lsp_start_time']:.2f}s")
             self.logger.info(f"   🔍 Diagnostic analysis: {self.performance_stats.get('analysis_time', 0):.2f}s")
+            if self.enable_symbols:
+                self.logger.info(f"   🔍 Symbol analysis: {self.performance_stats.get('symbol_analysis_time', 0):.2f}s")
+                self.logger.info(f"   📊 Total symbols found: {self.total_symbols}")
             self.logger.info(f"   🎯 Total execution time: {total_time:.2f}s")
             self.logger.info("=" * 80)
 
@@ -1248,10 +1457,31 @@ class EnhancedSerenaIntegration:
                 'files_with_runtime_errors': list(set(e.file_path for e in runtime_errors))
             }
         
+        symbol_summary = {}
+        if self.analyzer.enable_symbols:
+            symbol_summary = {
+                'total_symbols': len(self.analyzer.collected_symbols),
+                'symbol_types': list(set(s.kind for s in self.analyzer.collected_symbols)),
+                'files_with_symbols': list(set(s.location.get('uri', '').replace('file://', '') for s in self.analyzer.collected_symbols if s.location)),
+                'symbol_references_count': len(self.analyzer.symbol_references)
+            }
+        
         return {
             'formatted_output': result,
             'runtime_summary': runtime_summary,
+            'symbol_summary': symbol_summary,
             'performance_stats': self.analyzer.performance_stats
+        }
+    
+    def get_symbol_analysis(self) -> Dict[str, Any]:
+        """Get detailed symbol analysis results."""
+        if not self.analyzer.enable_symbols:
+            return {'error': 'Symbol analysis not enabled'}
+        
+        return {
+            'total_symbols': len(self.analyzer.collected_symbols),
+            'symbol_references': self.analyzer.symbol_references,
+            'analysis_time': self.analyzer.performance_stats.get('symbol_analysis_time', 0)
         }
     
     def clear_runtime_errors(self) -> None:
