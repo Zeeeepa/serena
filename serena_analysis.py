@@ -910,7 +910,7 @@ class SerenaLSPAnalyzer:
         
         return all_diagnostics
     
-    def format_diagnostic_output(self, diagnostics: List[Diagnostic]) -> str:
+    def format_diagnostic_output(self, diagnostics: List[Diagnostic], project: Optional[Project] = None) -> str:
         """
         Format diagnostics in the requested output format with enhanced categorization and analysis.
         
@@ -947,11 +947,18 @@ class SerenaLSPAnalyzer:
                 # Get path relative to project root for better readability while preserving folder structure
                 try:
                     # Try to get path relative to the project root
-                    project_root = getattr(project, 'project_path', os.getcwd())
-                    if full_file_path.startswith(project_root):
-                        file_path = os.path.relpath(full_file_path, project_root)
+                    if project and hasattr(project, 'project_path'):
+                        project_root = project.project_path
+                        if full_file_path.startswith(project_root):
+                            file_path = os.path.relpath(full_file_path, project_root)
+                        else:
+                            file_path = os.path.relpath(full_file_path)
                     else:
+                        # Fallback: try to get a clean relative path
                         file_path = os.path.relpath(full_file_path)
+                        # If path starts with many ../ levels, just use basename with parent folder
+                        if file_path.count('../') > 3:
+                            file_path = '/'.join(full_file_path.split('/')[-3:])  # Keep last 3 path components
                 except (ValueError, AttributeError):
                     file_path = full_file_path  # Keep full absolute path if relative conversion fails
                 
@@ -1181,7 +1188,7 @@ class SerenaLSPAnalyzer:
             if output_format == 'json':
                 return results.to_dict()
             else:
-                return self.format_diagnostic_output(diagnostics)
+                return self.format_diagnostic_output(diagnostics, project)
             
         except Exception as e:
             self.logger.error(f"❌ COMPREHENSIVE ANALYSIS FAILED: {e}")
