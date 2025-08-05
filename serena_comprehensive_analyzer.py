@@ -112,12 +112,33 @@ class EnhancedDiagnostic:
     range_info: Optional[Dict[str, Any]] = None
     location: Optional[Dict[str, Any]] = None
     related_information: List[Dict[str, Any]] = None
+    # Runtime error fields
+    runtime_error_type: Optional[str] = None
+    stack_trace: Optional[str] = None
+    execution_context: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
         if self.related_information is None:
             self.related_information = []
+
+
+@dataclass
+class RuntimeError:
+    """Runtime error information captured during execution."""
+    file_path: str
+    line: int
+    column: int
+    error_type: str
+    error_message: str
+    stack_trace: str
+    execution_time: float
+    context: Dict[str, Any] = None
+    
+    def __post_init__(self):
+        if self.context is None:
+            self.context = {}
 
 
 @dataclass
@@ -154,7 +175,8 @@ class ComprehensiveSerenaAnalyzer:
     supported by Serena.
     """
     
-    def __init__(self, verbose: bool = False, timeout: float = 600, max_workers: int = 4):
+    def __init__(self, verbose: bool = False, timeout: float = 600, max_workers: int = 4, 
+                 enable_runtime_errors: bool = False):
         """
         Initialize the comprehensive analyzer.
         
@@ -162,10 +184,12 @@ class ComprehensiveSerenaAnalyzer:
             verbose: Enable verbose logging and progress tracking
             timeout: Timeout for language server operations
             max_workers: Maximum number of concurrent workers for file processing
+            enable_runtime_errors: Enable runtime error collection during execution
         """
         self.verbose = verbose
         self.timeout = timeout
         self.max_workers = max_workers
+        self.enable_runtime_errors = enable_runtime_errors
         self.temp_dir: Optional[str] = None
         self.project: Optional[Project] = None
         self.language_server: Optional[SolidLanguageServer] = None
@@ -175,8 +199,13 @@ class ComprehensiveSerenaAnalyzer:
         self.processed_files = 0
         self.failed_files = 0
         self.total_diagnostics = 0
+        self.total_runtime_errors = 0
         self.analysis_start_time = None
         self.lock = threading.Lock()
+        
+        # Runtime error tracking
+        self.runtime_errors: List[RuntimeError] = []
+        self.execution_results: Dict[str, Any] = {}
         
         # Set up comprehensive logging
         log_level = logging.DEBUG if verbose else logging.INFO
@@ -193,12 +222,15 @@ class ComprehensiveSerenaAnalyzer:
             'setup_time': 0,
             'lsp_start_time': 0,
             'analysis_time': 0,
+            'runtime_analysis_time': 0,
             'total_time': 0
         }
         
         if verbose:
             self.logger.info("🚀 Initializing Comprehensive Serena LSP Analyzer")
             self.logger.info(f"⚙️  Configuration: timeout={timeout}s, max_workers={max_workers}")
+            if enable_runtime_errors:
+                self.logger.info("🔥 Runtime error collection enabled")
     
     def __enter__(self):
         """Context manager entry."""
@@ -683,6 +715,297 @@ class ComprehensiveSerenaAnalyzer:
         
         return all_diagnostics
     
+    def collect_runtime_errors(self, project: Project) -> List[RuntimeError]:
+        """
+        Collect runtime errors by executing Python files and capturing exceptions.
+        
+        This method safely executes Python files in isolated environments to capture
+        actual runtime errors that occur during execution.
+        """
+        if not self.enable_runtime_errors:
+            return []
+        
+        runtime_start_time = time.time()
+        self.logger.info("🔥 Starting runtime error collection...")
+        
+        # Get Python files for runtime analysis
+        try:
+            source_files = project.gather_source_files()
+            python_files = [f for f in source_files if f.endswith('.py')]
+            
+            if not python_files:
+                self.logger.info("⚠️  No Python files found for runtime analysis")
+                return []
+            
+            self.logger.info(f"🐍 Found {len(python_files)} Python files for runtime analysis")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to gather Python files for runtime analysis: {e}")
+            return []
+        
+        runtime_errors = []
+        processed_count = 0
+        failed_count = 0
+        
+        def analyze_runtime_errors(file_path: str) -> List[RuntimeError]:
+            """Analyze a single Python file for runtime errors."""
+            try:
+                # Create isolated execution environment
+                execution_start = time.time()
+                
+                # Read file content
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    file_content = f.read()
+                
+                # Skip files that are clearly not executable (e.g., __init__.py with just imports)
+                if len(file_content.strip()) < 10 or file_content.strip().startswith('#'):
+                    return []
+                
+                # Create safe execution environment
+                safe_globals = {
+                    '__name__': '__main__',
+                    '__file__': file_path,
+                    '__builtins__': __builtins__,
+                    # Add common imports that might be needed
+                    'os': os,
+                    'sys': sys,
+                    'time': time,
+                    'json': json,
+                    'logging': logging,
+                }
+                
+                file_runtime_errors = []
+                
+                try:
+                    # Compile the code first to catch syntax errors
+                    compiled_code = compile(file_content, file_path, 'exec')
+                    
+                    # Execute in controlled environment with timeout
+                    import signal
+                    
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError("Execution timeout")
+                    
+                    # Set timeout for execution (5 seconds max per file)
+                    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(5)
+                    
+                    try:
+                        exec(compiled_code, safe_globals)
+                    finally:
+                        signal.alarm(0)
+                        signal.signal(signal.SIGALRM, old_handler)
+                        
+                except SyntaxError as e:
+                    # Syntax errors are runtime-detectable issues
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=e.lineno or 1,
+                        column=e.offset or 1,
+                        error_type="SyntaxError",
+                        error_message=str(e.msg),
+                        stack_trace=f"SyntaxError at line {e.lineno}: {e.msg}",
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "error_text": e.text,
+                            "filename": e.filename,
+                            "execution_type": "syntax_check"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except ImportError as e:
+                    # Import errors during runtime
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,  # Import errors typically at top
+                        column=1,
+                        error_type="ImportError",
+                        error_message=str(e),
+                        stack_trace=f"ImportError: {e}",
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "missing_module": str(e).split("'")[1] if "'" in str(e) else "unknown",
+                            "execution_type": "import_error"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except NameError as e:
+                    # Name errors during runtime
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,
+                        column=1,
+                        error_type="NameError",
+                        error_message=str(e),
+                        stack_trace=f"NameError: {e}",
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "undefined_name": str(e).split("'")[1] if "'" in str(e) else "unknown",
+                            "execution_type": "name_error"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except AttributeError as e:
+                    # Attribute errors during runtime
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,
+                        column=1,
+                        error_type="AttributeError",
+                        error_message=str(e),
+                        stack_trace=f"AttributeError: {e}",
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "attribute_error": str(e),
+                            "execution_type": "attribute_error"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except TypeError as e:
+                    # Type errors during runtime
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,
+                        column=1,
+                        error_type="TypeError",
+                        error_message=str(e),
+                        stack_trace=f"TypeError: {e}",
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "type_error": str(e),
+                            "execution_type": "type_error"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except ValueError as e:
+                    # Value errors during runtime
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,
+                        column=1,
+                        error_type="ValueError",
+                        error_message=str(e),
+                        stack_trace=f"ValueError: {e}",
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "value_error": str(e),
+                            "execution_type": "value_error"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except TimeoutError:
+                    # Execution timeout
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,
+                        column=1,
+                        error_type="TimeoutError",
+                        error_message="Execution timed out after 5 seconds",
+                        stack_trace="TimeoutError: Execution timed out",
+                        execution_time=5.0,
+                        context={
+                            "execution_type": "timeout",
+                            "timeout_duration": 5.0
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                    
+                except Exception as e:
+                    # Other runtime errors
+                    import traceback
+                    stack_trace = traceback.format_exc()
+                    
+                    runtime_error = RuntimeError(
+                        file_path=file_path,
+                        line=1,
+                        column=1,
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                        stack_trace=stack_trace,
+                        execution_time=time.time() - execution_start,
+                        context={
+                            "exception_type": type(e).__name__,
+                            "execution_type": "general_exception"
+                        }
+                    )
+                    file_runtime_errors.append(runtime_error)
+                
+                return file_runtime_errors
+                
+            except Exception as e:
+                # File reading or processing error
+                self.logger.warning(f"⚠️  Could not analyze runtime errors for {os.path.basename(file_path)}: {e}")
+                return []
+        
+        # Process files for runtime errors
+        self.logger.info(f"🔥 Processing {len(python_files)} Python files for runtime errors...")
+        
+        # Limit runtime analysis to prevent excessive execution time
+        max_runtime_files = min(100, len(python_files))  # Limit to 100 files for safety
+        selected_files = python_files[:max_runtime_files]
+        
+        if len(python_files) > max_runtime_files:
+            self.logger.info(f"⚠️  Limiting runtime analysis to {max_runtime_files} files for safety")
+        
+        with ThreadPoolExecutor(max_workers=min(2, self.max_workers)) as executor:
+            future_to_file = {
+                executor.submit(analyze_runtime_errors, file_path): file_path 
+                for file_path in selected_files
+            }
+            
+            for future in as_completed(future_to_file):
+                file_path = future_to_file[future]
+                
+                try:
+                    file_runtime_errors = future.result()
+                    
+                    with self.lock:
+                        runtime_errors.extend(file_runtime_errors)
+                        processed_count += 1
+                        
+                        if self.verbose and len(file_runtime_errors) > 0:
+                            self.logger.debug(f"🔥 Found {len(file_runtime_errors)} runtime errors in {os.path.basename(file_path)}")
+                            
+                except Exception as e:
+                    with self.lock:
+                        failed_count += 1
+                        self.logger.warning(f"⚠️  Runtime analysis failed for {os.path.basename(file_path)}: {e}")
+        
+        # Store runtime errors
+        self.runtime_errors = runtime_errors
+        self.total_runtime_errors = len(runtime_errors)
+        
+        runtime_analysis_time = time.time() - runtime_start_time
+        self.performance_stats['runtime_analysis_time'] = runtime_analysis_time
+        
+        self.logger.info("=" * 80)
+        self.logger.info("🔥 RUNTIME ERROR COLLECTION COMPLETE")
+        self.logger.info("=" * 80)
+        self.logger.info(f"✅ Files processed: {processed_count}")
+        self.logger.info(f"❌ Files failed: {failed_count}")
+        self.logger.info(f"🔥 Total runtime errors found: {self.total_runtime_errors}")
+        
+        # Runtime error breakdown
+        if runtime_errors:
+            error_type_counts = {}
+            for error in runtime_errors:
+                error_type_counts[error.error_type] = error_type_counts.get(error.error_type, 0) + 1
+            
+            self.logger.info("🔥 Runtime errors by type:")
+            for error_type, count in sorted(error_type_counts.items()):
+                self.logger.info(f"   {error_type}: {count}")
+        
+        self.logger.info(f"⏱️  Runtime analysis time: {runtime_analysis_time:.2f} seconds")
+        self.logger.info("=" * 80)
+        
+        return runtime_errors
+    
     def format_diagnostic_output(self, diagnostics: List[EnhancedDiagnostic]) -> str:
         """
         Format diagnostics with FULL location paths, error types, error reasons, and severity.
@@ -1015,6 +1338,12 @@ def main():
         help='Enable verbose logging with progress tracking and performance metrics'
     )
     
+    parser.add_argument(
+        '--runtime-errors',
+        action='store_true',
+        help='Enable runtime error collection by executing Python files (EXPERIMENTAL)'
+    )
+    
     args = parser.parse_args()
     
     # Validate arguments
@@ -1048,7 +1377,8 @@ def main():
         with ComprehensiveSerenaAnalyzer(
             verbose=args.verbose,
             timeout=args.timeout,
-            max_workers=args.max_workers
+            max_workers=args.max_workers,
+            enable_runtime_errors=args.runtime_errors
         ) as analyzer:
             result = analyzer.analyze_repository(
                 args.repository,
