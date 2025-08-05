@@ -37,9 +37,14 @@ try:
     from serena.project import Project
     from solidlsp.ls_config import Language, LanguageServerConfig
     from solidlsp.ls_logger import LanguageServerLogger
-    from solidlsp.ls_types import DiagnosticsSeverity, Diagnostic
+    from solidlsp.ls_types import DiagnosticsSeverity, Diagnostic, ErrorCodes
     from solidlsp.settings import SolidLSPSettings
     from solidlsp import SolidLanguageServer
+    from solidlsp.lsp_protocol_handler.server import (
+        ProcessLaunchInfo,
+        LSPError,
+        MessageType,
+    )
 except ImportError as e:
     print(f"Error: Failed to import required Serena/SolidLSP modules: {e}")
     print("Please ensure Serena and SolidLSP are properly installed.")
@@ -59,10 +64,22 @@ class EnhancedDiagnostic:
     source: Optional[str] = None
     category: Optional[str] = None
     tags: List[str] = None
+    error_code: Optional[ErrorCodes] = None
     
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
+
+
+@dataclass
+class LSPServerInfo:
+    """Information about the LSP server process."""
+    process_info: Optional[ProcessLaunchInfo] = None
+    server_status: str = "not_started"
+    initialization_time: float = 0.0
+    last_error: Optional[LSPError] = None
+    message_count: int = 0
+    error_count: int = 0
 
 
 @dataclass
@@ -108,6 +125,7 @@ class SerenaLSPAnalyzer:
         self.temp_dir: Optional[str] = None
         self.project: Optional[Project] = None
         self.language_server: Optional[SolidLanguageServer] = None
+        self.server_info: LSPServerInfo = LSPServerInfo()
         
         # Analysis tracking
         self.total_files = 0
@@ -148,17 +166,72 @@ class SerenaLSPAnalyzer:
         self.cleanup()
     
     def cleanup(self):
-        """Clean up resources including language server and temporary directories."""
+        """Clean up resources including language server and temporary directories with enhanced error handling."""
         try:
-            if self.language_server and self.language_server.is_running():
-                self.logger.info("Stopping language server...")
-                self.language_server.stop()
+            # Enhanced language server cleanup with LSPError handling
+            if self.language_server:
+                try:
+                    if self.language_server.is_running():
+                        self.logger.info("🛑 Stopping language server...")
+                        self.server_info.server_status = "stopping"
+                        
+                        # Attempt graceful shutdown
+                        self.language_server.stop()
+                        
+                        # Wait briefly for graceful shutdown
+                        time.sleep(1)
+                        
+                        if self.language_server.is_running():
+                            self.logger.warning("⚠️  Language server did not stop gracefully")
+                            self.server_info.server_status = "force_stopped"
+                        else:
+                            self.logger.info("✅ Language server stopped successfully")
+                            self.server_info.server_status = "stopped"
+                    else:
+                        self.logger.debug("🔍 Language server was not running")
+                        self.server_info.server_status = "not_running"
+                        
+                except LSPError as lsp_error:
+                    self.server_info.last_error = lsp_error
+                    self.server_info.error_count += 1
+                    self.logger.warning(f"⚠️  LSP Error during server shutdown: {lsp_error}")
+                    self.server_info.server_status = "error_during_stop"
+                    
+                except Exception as e:
+                    # Convert to LSPError for consistent handling
+                    lsp_error = LSPError(ErrorCodes.InternalError, f"Error stopping server: {str(e)}")
+                    self.server_info.last_error = lsp_error
+                    self.server_info.error_count += 1
+                    self.logger.warning(f"⚠️  Error stopping language server: {e}")
+                    self.server_info.server_status = "error_during_stop"
                 
+                finally:
+                    self.language_server = None
+            
+            # Clean up temporary directory
             if self.temp_dir and os.path.exists(self.temp_dir):
-                self.logger.info(f"Cleaning up temporary directory: {self.temp_dir}")
-                shutil.rmtree(self.temp_dir, ignore_errors=True)
+                try:
+                    self.logger.info(f"🧹 Cleaning up temporary directory: {self.temp_dir}")
+                    shutil.rmtree(self.temp_dir, ignore_errors=True)
+                    self.logger.debug("✅ Temporary directory cleaned up successfully")
+                except Exception as e:
+                    self.logger.warning(f"⚠️  Error cleaning up temporary directory: {e}")
+            
+            # Log final server statistics
+            if self.verbose and self.server_info.message_count > 0:
+                self.logger.info("📊 Final LSP Server Statistics:")
+                self.logger.info(f"   📨 Total messages: {self.server_info.message_count}")
+                self.logger.info(f"   ❌ Total errors: {self.server_info.error_count}")
+                self.logger.info(f"   ⏱️  Initialization time: {self.server_info.initialization_time:.2f}s")
+                self.logger.info(f"   📊 Final status: {self.server_info.server_status}")
+                
+                if self.server_info.last_error:
+                    self.logger.info(f"   🔴 Last error: {self.server_info.last_error}")
+                    
         except Exception as e:
-            self.logger.warning(f"Error during cleanup: {e}")
+            # Final fallback error handling
+            self.logger.error(f"❌ Critical error during cleanup: {e}")
+            self.server_info.server_status = "cleanup_failed"
     
     def is_git_url(self, path: str) -> bool:
         """Check if the given path is a Git URL."""
@@ -301,7 +374,7 @@ class SerenaLSPAnalyzer:
     
     def start_language_server(self, project: Project) -> SolidLanguageServer:
         """
-        Start the language server for the project with enhanced initialization.
+        Start the language server for the project with enhanced initialization using ProcessLaunchInfo and LSPError handling.
         
         Args:
             project: The Serena project
@@ -309,7 +382,8 @@ class SerenaLSPAnalyzer:
         Returns:
             Started and validated SolidLanguageServer instance
         """
-        self.logger.info("🔧 Starting language server initialization...")
+        self.logger.info("🔧 Starting enhanced language server initialization...")
+        self.server_info.server_status = "initializing"
         
         max_attempts = 3
         base_delay = 2.0
@@ -323,64 +397,153 @@ class SerenaLSPAnalyzer:
                 
                 self.logger.info(f"🚀 Language server initialization attempt {attempt + 1}/{max_attempts}")
                 
-                # Create language server with configuration
-                self.language_server = project.create_language_server(
-                    log_level=logging.DEBUG if self.verbose else logging.WARNING,
-                    ls_timeout=self.timeout,
-                    trace_lsp_communication=self.verbose
-                )
+                # Create language server with enhanced configuration
+                init_start_time = time.time()
                 
-                if not self.language_server:
-                    raise RuntimeError("Failed to create language server instance")
+                try:
+                    self.language_server = project.create_language_server(
+                        log_level=logging.DEBUG if self.verbose else logging.WARNING,
+                        ls_timeout=self.timeout,
+                        trace_lsp_communication=self.verbose
+                    )
+                    
+                    if not self.language_server:
+                        raise LSPError(ErrorCodes.InternalError, "Failed to create language server instance")
+                    
+                    # Store process information if available
+                    if hasattr(self.language_server, 'process_info'):
+                        self.server_info.process_info = self.language_server.process_info
+                    
+                except Exception as e:
+                    # Convert to LSPError for consistent handling
+                    if not isinstance(e, LSPError):
+                        lsp_error = LSPError(ErrorCodes.ServerNotInitialized, f"Server creation failed: {str(e)}")
+                    else:
+                        lsp_error = e
+                    self.server_info.last_error = lsp_error
+                    raise lsp_error
                 
                 self.logger.info("📡 Starting language server process...")
                 
-                # Start the server
-                start_time = time.time()
-                self.language_server.start()
-                startup_time = time.time() - start_time
+                # Start the server with enhanced error handling
+                try:
+                    self.language_server.start()
+                    self.server_info.server_status = "starting"
+                    
+                except Exception as e:
+                    lsp_error = LSPError(ErrorCodes.ServerNotInitialized, f"Server start failed: {str(e)}")
+                    self.server_info.last_error = lsp_error
+                    self.server_info.error_count += 1
+                    raise lsp_error
+                
+                startup_time = time.time() - init_start_time
+                self.server_info.initialization_time = startup_time
                 
                 self.logger.info(f"⏱️  Language server startup took {startup_time:.2f}s")
                 
-                # Validate server health
-                if not self.language_server.is_running():
-                    raise RuntimeError("Language server process is not running after start")
+                # Enhanced server health validation with LSPError handling
+                try:
+                    if not self.language_server.is_running():
+                        raise LSPError(ErrorCodes.ServerNotInitialized, "Language server process is not running after start")
+                    
+                    self.server_info.server_status = "running"
+                    
+                    # Wait for server to be fully ready with progress logging
+                    self.logger.info("🔍 Validating language server readiness...")
+                    ready_timeout = min(30, self.timeout // 4)
+                    
+                    # Progressive readiness check
+                    for i in range(int(ready_timeout)):
+                        if not self.language_server.is_running():
+                            raise LSPError(ErrorCodes.ServerNotInitialized, f"Server stopped during initialization at {i}s")
+                        
+                        if self.verbose and i % 5 == 0:
+                            self.logger.debug(f"🔍 Server readiness check: {i}/{ready_timeout}s")
+                        
+                        time.sleep(1)
+                    
+                    # Final validation
+                    if not self.language_server.is_running():
+                        raise LSPError(ErrorCodes.ServerNotInitialized, "Language server stopped running during initialization")
+                    
+                    self.server_info.server_status = "ready"
+                    
+                except LSPError as lsp_error:
+                    self.server_info.last_error = lsp_error
+                    self.server_info.error_count += 1
+                    raise lsp_error
                 
-                # Wait for server to be fully ready
-                self.logger.info("🔍 Validating language server readiness...")
-                ready_timeout = min(30, self.timeout // 4)
-                time.sleep(min(5, ready_timeout))  # Give server time to initialize
+                total_init_time = time.time() - init_start_time
+                self.server_info.initialization_time = total_init_time
                 
-                # Final validation
-                if not self.language_server.is_running():
-                    raise RuntimeError("Language server stopped running during initialization")
+                # Log server information if available
+                if self.verbose and self.server_info.process_info:
+                    self.logger.info(f"📊 Process info: cmd={self.server_info.process_info.cmd}, cwd={self.server_info.process_info.cwd}")
                 
-                total_init_time = time.time() - start_time
                 self.logger.info(f"🎉 Language server successfully initialized in {total_init_time:.2f}s")
+                self.logger.info(f"📈 Server stats: messages={self.server_info.message_count}, errors={self.server_info.error_count}")
                 
                 return self.language_server
                 
-            except Exception as e:
-                error_msg = f"Language server initialization attempt {attempt + 1} failed: {e}"
+            except LSPError as lsp_error:
+                self.server_info.last_error = lsp_error
+                self.server_info.error_count += 1
+                error_msg = f"LSP Error (attempt {attempt + 1}): {lsp_error}"
                 
                 if attempt < max_attempts - 1:
                     self.logger.warning(f"⚠️  {error_msg}")
-                    
-                    # Clean up failed server instance
-                    if self.language_server:
-                        try:
-                            if self.language_server.is_running():
-                                self.language_server.stop()
-                        except Exception as cleanup_error:
-                            self.logger.debug(f"Error during cleanup: {cleanup_error}")
-                        finally:
-                            self.language_server = None
+                    self._cleanup_failed_server()
                 else:
                     self.logger.error(f"❌ {error_msg}")
+                    self.server_info.server_status = "failed"
+                    raise RuntimeError(f"Failed to start language server after {max_attempts} attempts: {lsp_error}")
+                    
+            except Exception as e:
+                # Convert unexpected errors to LSPError
+                lsp_error = LSPError(ErrorCodes.InternalError, f"Unexpected error: {str(e)}")
+                self.server_info.last_error = lsp_error
+                self.server_info.error_count += 1
+                error_msg = f"Unexpected error (attempt {attempt + 1}): {e}"
+                
+                if attempt < max_attempts - 1:
+                    self.logger.warning(f"⚠️  {error_msg}")
+                    self._cleanup_failed_server()
+                else:
+                    self.logger.error(f"❌ {error_msg}")
+                    self.server_info.server_status = "failed"
                     raise RuntimeError(f"Failed to start language server after {max_attempts} attempts: {e}")
         
         # This should never be reached, but just in case
+        self.server_info.server_status = "failed"
         raise RuntimeError("Language server initialization failed unexpectedly")
+    
+    def _cleanup_failed_server(self):
+        """Clean up a failed server instance."""
+        if self.language_server:
+            try:
+                if self.language_server.is_running():
+                    self.language_server.stop()
+            except Exception as cleanup_error:
+                self.logger.debug(f"Error during server cleanup: {cleanup_error}")
+            finally:
+                self.language_server = None
+                self.server_info.server_status = "stopped"
+    
+    def get_server_status(self) -> Dict[str, Any]:
+        """Get comprehensive server status information."""
+        return {
+            "status": self.server_info.server_status,
+            "initialization_time": self.server_info.initialization_time,
+            "message_count": self.server_info.message_count,
+            "error_count": self.server_info.error_count,
+            "last_error": str(self.server_info.last_error) if self.server_info.last_error else None,
+            "process_info": {
+                "cmd": str(self.server_info.process_info.cmd) if self.server_info.process_info else None,
+                "cwd": self.server_info.process_info.cwd if self.server_info.process_info else None,
+                "env_vars": len(self.server_info.process_info.env) if self.server_info.process_info else 0
+            } if self.server_info.process_info else None,
+            "is_running": self.language_server.is_running() if self.language_server else False
+        }
     
     def collect_diagnostics(self, project: Project, language_server: SolidLanguageServer, 
                           severity_filter: Optional[DiagnosticsSeverity] = None) -> List[EnhancedDiagnostic]:
@@ -426,10 +589,48 @@ class SerenaLSPAnalyzer:
         self.logger.info(f"⚙️  Using {self.max_workers} workers with batch processing")
         
         def analyze_single_file(file_path: str, retry_count: int = 0) -> Tuple[str, List[EnhancedDiagnostic], Optional[str], bool]:
-            """Analyze a single file using Serena LSP."""
+            """Analyze a single file using Serena LSP with enhanced error handling."""
             try:
-                # Get diagnostics from LSP using Serena's method
-                lsp_diagnostics = language_server.request_text_document_diagnostics(file_path)
+                # Increment message count for tracking
+                self.server_info.message_count += 1
+                
+                # Get diagnostics from LSP using Serena's method with LSPError handling
+                try:
+                    lsp_diagnostics = language_server.request_text_document_diagnostics(file_path)
+                    
+                except LSPError as lsp_error:
+                    self.server_info.error_count += 1
+                    self.server_info.last_error = lsp_error
+                    
+                    # Log error with appropriate message type
+                    if lsp_error.code == ErrorCodes.RequestCancelled:
+                        if self.verbose:
+                            self.logger.debug(f"🔄 Request cancelled for {os.path.basename(file_path)}: {lsp_error.message}")
+                        # Retryable error
+                        return file_path, [], f"LSP Request Cancelled: {lsp_error.message}", retry_count < 2
+                    elif lsp_error.code == ErrorCodes.ContentModified:
+                        if self.verbose:
+                            self.logger.debug(f"📝 Content modified for {os.path.basename(file_path)}: {lsp_error.message}")
+                        # Retryable error
+                        return file_path, [], f"LSP Content Modified: {lsp_error.message}", retry_count < 2
+                    elif lsp_error.code == ErrorCodes.ServerNotInitialized:
+                        self.logger.error(f"❌ Server not initialized for {os.path.basename(file_path)}: {lsp_error.message}")
+                        # Non-retryable error
+                        return file_path, [], f"LSP Server Not Initialized: {lsp_error.message}", False
+                    else:
+                        # Log with appropriate message type based on error severity
+                        if lsp_error.code in [ErrorCodes.InternalError, ErrorCodes.ServerErrorStart]:
+                            self.logger.error(f"❌ LSP Internal Error for {os.path.basename(file_path)}: {lsp_error}")
+                        else:
+                            self.logger.warning(f"⚠️  LSP Error for {os.path.basename(file_path)}: {lsp_error}")
+                        
+                        # Determine if retryable based on error code
+                        retryable = retry_count < 2 and lsp_error.code not in [
+                            ErrorCodes.InvalidRequest,
+                            ErrorCodes.MethodNotFound,
+                            ErrorCodes.InvalidParams
+                        ]
+                        return file_path, [], f"LSP Error ({lsp_error.code}): {lsp_error.message}", retryable
                 
                 enhanced_diagnostics = []
                 for diag in lsp_diagnostics:
@@ -439,7 +640,7 @@ class SerenaLSPAnalyzer:
                     line = start_pos.get('line', 0) + 1  # LSP uses 0-based line numbers
                     column = start_pos.get('character', 0) + 1  # LSP uses 0-based character numbers
                     
-                    # Map severity
+                    # Map severity with MessageType integration
                     severity_map = {
                         DiagnosticsSeverity.ERROR: 'ERROR',
                         DiagnosticsSeverity.WARNING: 'WARNING',
@@ -454,7 +655,17 @@ class SerenaLSPAnalyzer:
                     if severity_filter and severity_value != severity_filter:
                         continue
                     
-                    # Create enhanced diagnostic
+                    # Extract error code if available
+                    diagnostic_code = diag.get('code')
+                    error_code = None
+                    if diagnostic_code and isinstance(diagnostic_code, int):
+                        try:
+                            error_code = ErrorCodes(diagnostic_code)
+                        except ValueError:
+                            # Not a standard LSP error code
+                            pass
+                    
+                    # Create enhanced diagnostic with LSP protocol information
                     enhanced_diag = EnhancedDiagnostic(
                         file_path=file_path,
                         line=line,
@@ -464,15 +675,42 @@ class SerenaLSPAnalyzer:
                         code=str(diag.get('code', '')),
                         source=diag.get('source', 'lsp'),
                         category='lsp_diagnostic',
-                        tags=['serena_lsp_analysis']
+                        tags=['serena_lsp_analysis'],
+                        error_code=error_code
                     )
                     enhanced_diagnostics.append(enhanced_diag)
+                
+                # Log diagnostic collection with appropriate message type
+                if self.verbose and len(enhanced_diagnostics) > 0:
+                    if any(d.severity == 'ERROR' for d in enhanced_diagnostics):
+                        # Use error message type for files with errors
+                        self.logger.debug(f"🔴 Found {len(enhanced_diagnostics)} diagnostics (including errors) in {os.path.basename(file_path)}")
+                    elif any(d.severity == 'WARNING' for d in enhanced_diagnostics):
+                        # Use warning message type for files with warnings
+                        self.logger.debug(f"🟡 Found {len(enhanced_diagnostics)} diagnostics (warnings) in {os.path.basename(file_path)}")
+                    else:
+                        # Use info message type for files with info/hints
+                        self.logger.debug(f"🔵 Found {len(enhanced_diagnostics)} diagnostics (info/hints) in {os.path.basename(file_path)}")
                 
                 return file_path, enhanced_diagnostics, None, False
                 
             except Exception as e:
+                # Handle unexpected errors
+                self.server_info.error_count += 1
+                
+                # Convert to LSPError for consistent handling
+                if not isinstance(e, LSPError):
+                    lsp_error = LSPError(ErrorCodes.InternalError, f"Unexpected error analyzing {file_path}: {str(e)}")
+                    self.server_info.last_error = lsp_error
+                
+                # Log with error message type
+                self.logger.warning(f"⚠️  Unexpected error analyzing {os.path.basename(file_path)}: {e}")
+                
                 # Determine if this is a retryable error
-                retryable = retry_count < 2 and ("timeout" in str(e).lower() or "connection" in str(e).lower())
+                retryable = retry_count < 2 and any(keyword in str(e).lower() for keyword in [
+                    "timeout", "connection", "temporary", "busy", "retry"
+                ])
+                
                 return file_path, [], str(e), retryable
         
         # Process files in batches for better LSP server efficiency
@@ -627,7 +865,7 @@ class SerenaLSPAnalyzer:
             if len(clean_message) > 200:
                 clean_message = clean_message[:197] + "..."
             
-            # Enhanced metadata formatting
+            # Enhanced metadata formatting with LSP protocol information
             metadata_parts = [f"severity: {diag.severity}"]
             
             if diag.code and diag.code != '':
@@ -635,6 +873,14 @@ class SerenaLSPAnalyzer:
             
             if diag.source and diag.source != 'lsp':
                 metadata_parts.append(f"source: {diag.source}")
+            
+            # Add LSP error code information if available
+            if diag.error_code:
+                metadata_parts.append(f"lsp_error: {diag.error_code.name}")
+            
+            # Add category information
+            if diag.category and diag.category != 'lsp_diagnostic':
+                metadata_parts.append(f"category: {diag.category}")
             
             other_types = ', '.join(metadata_parts)
             
@@ -799,19 +1045,35 @@ class SerenaLSPAnalyzer:
     
     def _generate_results(self, diagnostics: List[EnhancedDiagnostic], 
                          language: str, repo_path: str, start_time: float) -> AnalysisResults:
-        """Generate comprehensive analysis results."""
+        """Generate comprehensive analysis results with LSP server information."""
         # Count diagnostics by severity and file
         severity_counts = {}
         file_counts = {}
+        lsp_error_counts = {}
         
         for diag in diagnostics:
             severity_counts[diag.severity] = severity_counts.get(diag.severity, 0) + 1
             file_counts[diag.file_path] = file_counts.get(diag.file_path, 0) + 1
+            
+            # Count LSP error codes
+            if diag.error_code:
+                error_name = diag.error_code.name
+                lsp_error_counts[error_name] = lsp_error_counts.get(error_name, 0) + 1
         
         total_time = time.time() - start_time
         self.performance_stats['total_time'] = total_time
         
-        return AnalysisResults(
+        # Add server statistics to performance stats
+        server_stats = self.get_server_status()
+        self.performance_stats.update({
+            'lsp_server_init_time': server_stats['initialization_time'],
+            'lsp_messages_sent': server_stats['message_count'],
+            'lsp_errors_encountered': server_stats['error_count'],
+            'lsp_server_status': server_stats['status']
+        })
+        
+        # Create enhanced results with LSP information
+        results = AnalysisResults(
             total_files=self.total_files,
             processed_files=self.processed_files,
             failed_files=self.failed_files,
@@ -824,6 +1086,13 @@ class SerenaLSPAnalyzer:
             repository_path=repo_path,
             analysis_timestamp=time.strftime('%Y-%m-%d %H:%M:%S')
         )
+        
+        # Add LSP-specific information to results
+        if hasattr(results, '__dict__'):
+            results.__dict__['lsp_error_counts'] = lsp_error_counts
+            results.__dict__['server_status'] = server_stats
+        
+        return results
 
 
 def main():
