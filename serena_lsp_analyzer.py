@@ -86,98 +86,13 @@ try:
         LanguageServerSymbolLocation,
     )
     
-    SERENA_AVAILABLE = True
+
     
 except ImportError as e:
     print(f"Error: Failed to import required Serena/SolidLSP modules: {e}")
     print("Please ensure Serena and SolidLSP are properly installed.")
     print("Try: pip install -e . from the serena repository root")
-    
-    SERENA_AVAILABLE = False
-    
-    # Define comprehensive fallback types for graceful degradation
-    class MockLanguage:
-        PYTHON = "python"
-        TYPESCRIPT = "typescript"
-        JAVASCRIPT = "javascript"
-        JAVA = "java"
-        CSHARP = "csharp"
-        CPP = "cpp"
-        RUST = "rust"
-        GO = "go"
-        PHP = "php"
-        RUBY = "ruby"
-        KOTLIN = "kotlin"
-        DART = "dart"
-    
-    Language = MockLanguage
-    
-    class MockErrorCodes:
-        InternalError = -32603
-        ServerNotInitialized = -32002
-        RequestCancelled = -32800
-        ContentModified = -32801
-        InvalidRequest = -32600
-        MethodNotFound = -32601
-        InvalidParams = -32602
-        ServerErrorStart = -32099
-        ServerErrorEnd = -32000
-    
-    ErrorCodes = MockErrorCodes
-    
-    class MockLSPError(Exception):
-        def __init__(self, code, message):
-            self.code = code
-            self.message = message
-            super().__init__(f"LSP Error {code}: {message}")
-    
-    LSPError = MockLSPError
-    
-    class MockProcessLaunchInfo:
-        def __init__(self, cmd=None, cwd=None, env=None):
-            self.cmd = cmd or []
-            self.cwd = cwd or ""
-            self.env = env or {}
-    
-    ProcessLaunchInfo = MockProcessLaunchInfo
-    
-    class MockMessageType:
-        Error = 1
-        Warning = 2
-        Info = 3
-        Log = 4
-    
-    MessageType = MockMessageType
-    
-    class MockSymbolKind:
-        File = 1
-        Module = 2
-        Namespace = 3
-        Package = 4
-        Class = 5
-        Method = 6
-        Property = 7
-        Field = 8
-        Constructor = 9
-        Enum = 10
-        Interface = 11
-        Function = 12
-        Variable = 13
-        Constant = 14
-        String = 15
-        Number = 16
-        Boolean = 17
-        Array = 18
-        Object = 19
-        Key = 20
-        Null = 21
-        EnumMember = 22
-        Struct = 23
-        Event = 24
-        Operator = 25
-        TypeParameter = 26
-    
-    SymbolKind = MockSymbolKind
+    sys.exit(1)
 
 
 @dataclass
@@ -840,11 +755,20 @@ class SerenaLSPAnalyzer:
                 
                 enhanced_diagnostics = []
                 for diag in lsp_diagnostics:
-                    # Extract diagnostic information
+                    # Extract diagnostic information using proper LSP types
                     range_info = diag.get('range', {})
                     start_pos = range_info.get('start', {})
+                    end_pos = range_info.get('end', {})
                     line = start_pos.get('line', 0) + 1  # LSP uses 0-based line numbers
                     column = start_pos.get('character', 0) + 1  # LSP uses 0-based character numbers
+                    
+                    # Create proper LSP Position and Range objects
+                    position_start = Position(line=start_pos.get('line', 0), character=start_pos.get('character', 0))
+                    position_end = Position(line=end_pos.get('line', 0), character=end_pos.get('character', 0))
+                    range_obj = Range(start=position_start, end=position_end)
+                    
+                    # Create Location object for enhanced diagnostic
+                    location_obj = Location(uri=f"file://{file_path}", range=range_obj)
                     
                     # Map severity with MessageType integration
                     severity_map = {
@@ -882,7 +806,10 @@ class SerenaLSPAnalyzer:
                         source=diag.get('source', 'lsp'),
                         category='lsp_diagnostic',
                         tags=['serena_lsp_analysis'],
-                        error_code=error_code
+                        error_code=error_code,
+                        position=position_start,
+                        range=range_obj,
+                        location=location_obj
                     )
                     enhanced_diagnostics.append(enhanced_diag)
                 
