@@ -37,11 +37,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 # Serena and SolidLSP imports
 from serena.config.serena_config import ProjectConfig
 from serena.project import Project
+from serena.symbol import (
+    LanguageServerSymbolRetriever,
+    ReferenceInLanguageServerSymbol,
+    LanguageServerSymbol,
+    Symbol,
+    PositionInFile,
+    LanguageServerSymbolLocation,
+)
 from solidlsp.ls_config import Language, LanguageServerConfig
 from solidlsp.ls_logger import LanguageServerLogger
 from solidlsp.ls_types import DiagnosticsSeverity, Diagnostic
 from solidlsp.settings import SolidLSPSettings
 from solidlsp import SolidLanguageServer
+from solidlsp.lsp_protocol_handler.server import (
+    ProcessLaunchInfo,
+    LSPError,
+    MessageType,
+)
 
 
 @dataclass
@@ -74,6 +87,12 @@ class AnalysisResults:
     repository_path: str
     analysis_timestamp: str
     
+    # Enhanced symbol analysis results
+    total_symbols: int = 0
+    symbols_by_kind: Dict[str, int] = field(default_factory=dict)
+    symbol_analysis: Dict[str, Any] = field(default_factory=dict)
+    symbol_errors: int = 0
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
@@ -102,6 +121,7 @@ class SerenaLSPAnalyzer:
         self.temp_dir: Optional[str] = None
         self.project: Optional[Project] = None
         self.language_server: Optional[SolidLanguageServer] = None
+        self.symbol_retriever: Optional[LanguageServerSymbolRetriever] = None
         
         # Analysis tracking
         self.total_files = 0
@@ -110,6 +130,11 @@ class SerenaLSPAnalyzer:
         self.total_diagnostics = 0
         self.analysis_start_time = None
         self.lock = threading.Lock()
+        
+        # Symbol analysis tracking
+        self.total_symbols = 0
+        self.symbol_references = 0
+        self.symbol_errors = 0
         
         # Set up comprehensive logging
         log_level = logging.DEBUG if verbose else logging.INFO
@@ -130,6 +155,7 @@ class SerenaLSPAnalyzer:
             'setup_time': 0,
             'lsp_start_time': 0,
             'analysis_time': 0,
+            'symbol_analysis_time': 0,
             'total_time': 0
         }
     
@@ -325,14 +351,20 @@ class SerenaLSPAnalyzer:
                 self.logger.info(f"🚀 Language server initialization attempt {attempt + 1}/{max_attempts}")
                 
                 # Create language server with enhanced configuration
-                self.language_server = project.create_language_server(
-                    log_level=logging.DEBUG if self.verbose else logging.WARNING,
-                    ls_timeout=self.timeout,
-                    trace_lsp_communication=self.verbose
-                )
-                
-                if not self.language_server:
-                    raise RuntimeError("Failed to create language server instance")
+                try:
+                    self.language_server = project.create_language_server(
+                        log_level=logging.DEBUG if self.verbose else logging.WARNING,
+                        ls_timeout=self.timeout,
+                        trace_lsp_communication=self.verbose
+                    )
+                    
+                    if not self.language_server:
+                        raise RuntimeError("Failed to create language server instance")
+                        
+                except LSPError as lsp_err:
+                    raise RuntimeError(f"LSP Error during server creation: {lsp_err}")
+                except Exception as e:
+                    raise RuntimeError(f"Failed to create language server: {e}")
                 
                 self.logger.info("📡 Starting language server process...")
                 
@@ -374,6 +406,10 @@ class SerenaLSPAnalyzer:
                 total_init_time = time.time() - start_time
                 self.logger.info(f"🎉 Language server successfully initialized in {total_init_time:.2f}s")
                 
+                # Initialize symbol retriever
+                self.symbol_retriever = LanguageServerSymbolRetriever(self.language_server)
+                self.logger.info("🔍 Symbol retriever initialized")
+                
                 return self.language_server
                 
             except Exception as e:
@@ -397,6 +433,233 @@ class SerenaLSPAnalyzer:
         
         # This should never be reached, but just in case
         raise RuntimeError("Language server initialization failed unexpectedly")
+    
+    def analyze_symbols_in_file(self, file_path: str) -> Dict[str, Any]:
+        """
+        Analyze symbols in a specific file using the LanguageServerSymbolRetriever.
+        
+        Args:
+            file_path: Path to the file to analyze
+            
+        Returns:
+            Dictionary containing symbol analysis results
+        """
+        if not self.symbol_retriever:
+            return {"error": "Symbol retriever not initialized"}
+        
+        try:
+            # Get relative path for the file
+            if self.project and hasattr(self.project, 'project_root'):
+                project_root = self.project.project_root
+                if file_path.startswith(project_root):
+                    relative_path = os.path.relpath(file_path, project_root)
+                else:
+                    relative_path = file_path
+            else:
+                relative_path = file_path
+            
+            # Get document symbols
+            symbols = self.symbol_retriever.get_document_symbols(relative_path)
+            
+            symbol_analysis = {
+                'file_path': file_path,
+                'relative_path': relative_path,
+                'total_symbols': len(symbols),
+                'symbols_by_kind': {},
+                'symbols': [],
+                'symbol_locations': [],
+                'symbol_references': []
+            }
+            
+            for symbol in symbols:
+                # Count symbols by kind
+                kind = symbol.kind
+                if kind not in symbol_analysis['symbols_by_kind']:
+                    symbol_analysis['symbols_by_kind'][kind] = 0
+                symbol_analysis['symbols_by_kind'][kind] += 1
+                
+                # Extract symbol information
+                symbol_info = {
+                    'name': symbol.name,
+                    'kind': kind,
+                    'location': {
+                        'line': symbol.line,
+                        'column': symbol.column,
+                        'relative_path': symbol.relative_path
+                    },
+                    'body_range': None,
+                    'name_path': symbol.get_name_path(),
+                    'has_children': len(symbol.symbol_root.get("children", [])) > 0
+                }
+                
+                # Get body positions if available
+                try:
+                    start_pos = symbol.get_body_start_position()
+                    end_pos = symbol.get_body_end_position()
+                    if start_pos and end_pos:
+                        symbol_info['body_range'] = {
+                            'start': {'line': start_pos.line, 'column': start_pos.col},
+                            'end': {'line': end_pos.line, 'column': end_pos.col}
+                        }
+                except Exception as e:
+                    if self.verbose:
+                        self.logger.debug(f"Could not get body range for symbol {symbol.name}: {e}")
+                
+                symbol_analysis['symbols'].append(symbol_info)
+                
+                # Create symbol location for tracking
+                location = LanguageServerSymbolLocation(
+                    relative_path=symbol.relative_path,
+                    line=symbol.line,
+                    column=symbol.column
+                )
+                symbol_analysis['symbol_locations'].append({
+                    'symbol_name': symbol.name,
+                    'location': location.to_dict()
+                })
+            
+            return symbol_analysis
+            
+        except Exception as e:
+            self.logger.warning(f"Symbol analysis failed for {file_path}: {e}")
+            return {
+                'file_path': file_path,
+                'error': str(e),
+                'total_symbols': 0,
+                'symbols_by_kind': {},
+                'symbols': [],
+                'symbol_locations': [],
+                'symbol_references': []
+            }
+    
+    def find_symbol_references(self, symbol_name: str, within_file: Optional[str] = None) -> List[ReferenceInLanguageServerSymbol]:
+        """
+        Find references to a specific symbol using the symbol retriever.
+        
+        Args:
+            symbol_name: Name of the symbol to find references for
+            within_file: Optional file path to limit search scope
+            
+        Returns:
+            List of symbol references
+        """
+        if not self.symbol_retriever:
+            return []
+        
+        try:
+            # Find symbols by name
+            symbols = self.symbol_retriever.find_by_name(
+                symbol_name,
+                include_body=False,
+                substring_matching=True,
+                within_relative_path=within_file
+            )
+            
+            references = []
+            for symbol in symbols:
+                # Create a reference for each found symbol
+                if symbol.line is not None and symbol.column is not None:
+                    # Note: ReferenceInLanguageServerSymbol expects a symbol and position
+                    # This is a simplified approach - in practice, you'd get actual references from LSP
+                    reference = ReferenceInLanguageServerSymbol(
+                        symbol=symbol,
+                        line=symbol.line,
+                        character=symbol.column
+                    )
+                    references.append(reference)
+            
+            return references
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to find references for symbol '{symbol_name}': {e}")
+            return []
+    
+    def analyze_symbol_usage_patterns(self, source_files: List[str]) -> Dict[str, Any]:
+        """
+        Analyze symbol usage patterns across multiple files.
+        
+        Args:
+            source_files: List of source files to analyze
+            
+        Returns:
+            Dictionary containing symbol usage analysis
+        """
+        if not self.symbol_retriever:
+            return {"error": "Symbol retriever not initialized"}
+        
+        symbol_start_time = time.time()
+        self.logger.info("🔍 Starting comprehensive symbol analysis...")
+        
+        usage_analysis = {
+            'total_files_analyzed': 0,
+            'total_symbols_found': 0,
+            'symbols_by_kind': {},
+            'symbols_by_file': {},
+            'common_symbol_names': {},
+            'symbol_complexity': {},
+            'potential_issues': []
+        }
+        
+        for file_path in source_files:
+            try:
+                file_analysis = self.analyze_symbols_in_file(file_path)
+                
+                if 'error' not in file_analysis:
+                    usage_analysis['total_files_analyzed'] += 1
+                    usage_analysis['total_symbols_found'] += file_analysis['total_symbols']
+                    
+                    # Aggregate symbols by kind
+                    for kind, count in file_analysis['symbols_by_kind'].items():
+                        if kind not in usage_analysis['symbols_by_kind']:
+                            usage_analysis['symbols_by_kind'][kind] = 0
+                        usage_analysis['symbols_by_kind'][kind] += count
+                    
+                    # Track symbols by file
+                    usage_analysis['symbols_by_file'][file_path] = file_analysis['total_symbols']
+                    
+                    # Track common symbol names
+                    for symbol_info in file_analysis['symbols']:
+                        name = symbol_info['name']
+                        if name not in usage_analysis['common_symbol_names']:
+                            usage_analysis['common_symbol_names'][name] = 0
+                        usage_analysis['common_symbol_names'][name] += 1
+                        
+                        # Analyze symbol complexity (based on children)
+                        if symbol_info['has_children']:
+                            if name not in usage_analysis['symbol_complexity']:
+                                usage_analysis['symbol_complexity'][name] = 0
+                            usage_analysis['symbol_complexity'][name] += 1
+                
+                # Update tracking
+                with self.lock:
+                    self.total_symbols += file_analysis.get('total_symbols', 0)
+                    
+            except Exception as e:
+                usage_analysis['potential_issues'].append({
+                    'file': file_path,
+                    'issue': f"Symbol analysis failed: {e}"
+                })
+                with self.lock:
+                    self.symbol_errors += 1
+        
+        # Calculate analysis time
+        symbol_analysis_time = time.time() - symbol_start_time
+        self.performance_stats['symbol_analysis_time'] = symbol_analysis_time
+        
+        # Add summary statistics
+        usage_analysis['analysis_summary'] = {
+            'files_processed': usage_analysis['total_files_analyzed'],
+            'symbols_found': usage_analysis['total_symbols_found'],
+            'analysis_time': symbol_analysis_time,
+            'avg_symbols_per_file': (
+                usage_analysis['total_symbols_found'] / usage_analysis['total_files_analyzed']
+                if usage_analysis['total_files_analyzed'] > 0 else 0
+            )
+        }
+        
+        self.logger.info(f"🔍 Symbol analysis completed: {usage_analysis['total_symbols_found']} symbols in {symbol_analysis_time:.2f}s")
+        
+        return usage_analysis
     
     def collect_diagnostics(self, project: Project, language_server: SolidLanguageServer, 
                           severity_filter: Optional[DiagnosticsSeverity] = None) -> List[Diagnostic]:
@@ -449,16 +712,25 @@ class SerenaLSPAnalyzer:
             try:
                 diagnostics = []
                 
-                # Get diagnostics from LSP
+                # Get diagnostics from LSP with enhanced error handling
                 try:
                     lsp_diagnostics = language_server.request_text_document_diagnostics(file_path)
                     if lsp_diagnostics:
                         diagnostics.extend(lsp_diagnostics)
                         if self.verbose:
                             self.logger.debug(f"🔍 Found {len(lsp_diagnostics)} diagnostics in {os.path.basename(file_path)}")
+                except LSPError as lsp_err:
+                    if self.verbose:
+                        self.logger.debug(f"⚠️  LSP Error for {os.path.basename(file_path)}: {lsp_err}")
+                    # LSP errors might be retryable depending on the error code
+                    retryable = retry_count < 2 and lsp_err.code in [MessageType.error, MessageType.warning]
+                    return file_path, [], f"LSP Error: {lsp_err}", retryable
                 except Exception as e:
                     if self.verbose:
                         self.logger.debug(f"⚠️  Diagnostic collection failed for {os.path.basename(file_path)}: {e}")
+                    # Determine if this is a retryable error
+                    retryable = retry_count < 2 and ("timeout" in str(e).lower() or "connection" in str(e).lower())
+                    return file_path, [], str(e), retryable
                 
                 # Filter by severity if specified
                 if severity_filter is not None:
@@ -868,13 +1140,24 @@ class SerenaLSPAnalyzer:
             
             self.performance_stats['lsp_start_time'] = time.time() - lsp_start
             
-            # Step 5: Comprehensive diagnostic collection
+            # Step 5: Get source files for analysis
+            source_files = project.gather_source_files()
+            self.total_files = len(source_files)
+            self.logger.info(f"📊 Found {self.total_files} source files to analyze")
+            
+            # Step 6: Comprehensive diagnostic collection
             self.logger.info("🔍 Beginning comprehensive LSP diagnostic collection...")
             diagnostics = self.collect_diagnostics(project, language_server, severity)
             
-            # Step 6: Generate results
+            # Step 7: Enhanced symbol analysis (if verbose or requested)
+            symbol_analysis = {}
+            if self.verbose or output_format == 'json':
+                self.logger.info("🔍 Performing enhanced symbol analysis...")
+                symbol_analysis = self.analyze_symbol_usage_patterns(source_files)
+            
+            # Step 8: Generate results
             results = self._generate_results(
-                diagnostics, project.project_config.language.value, repo_path, total_start_time
+                diagnostics, project.project_config.language.value, repo_path, total_start_time, symbol_analysis
             )
             
             # Step 7: Format output
@@ -895,7 +1178,8 @@ class SerenaLSPAnalyzer:
                 return f"ERRORS: ['0']\nComprehensive analysis failed: {e}"
     
     def _generate_results(self, diagnostics: List[Diagnostic], 
-                         language: str, repo_path: str, start_time: float) -> AnalysisResults:
+                         language: str, repo_path: str, start_time: float, 
+                         symbol_analysis: Dict[str, Any] = None) -> AnalysisResults:
         """Generate comprehensive analysis results."""
         # Convert diagnostics to enhanced format
         enhanced_diagnostics = []
@@ -950,6 +1234,9 @@ class SerenaLSPAnalyzer:
         total_time = time.time() - start_time
         self.performance_stats['total_time'] = total_time
         
+        # Extract symbol analysis data if available
+        symbol_data = symbol_analysis or {}
+        
         return AnalysisResults(
             total_files=self.total_files,
             processed_files=self.processed_files,
@@ -961,7 +1248,12 @@ class SerenaLSPAnalyzer:
             performance_stats=self.performance_stats,
             language_detected=language,
             repository_path=repo_path,
-            analysis_timestamp=time.strftime('%Y-%m-%d %H:%M:%S')
+            analysis_timestamp=time.strftime('%Y-%m-%d %H:%M:%S'),
+            # Enhanced symbol analysis results
+            total_symbols=symbol_data.get('total_symbols_found', self.total_symbols),
+            symbols_by_kind=symbol_data.get('symbols_by_kind', {}),
+            symbol_analysis=symbol_data,
+            symbol_errors=self.symbol_errors
         )
 
 
@@ -1079,7 +1371,7 @@ def main():
     
     # Run the comprehensive analysis
     try:
-        with SerenaLSPAnalyzer(
+        with SerenaAnalyzer(
             verbose=args.verbose, 
             timeout=args.timeout,
             max_workers=args.max_workers
