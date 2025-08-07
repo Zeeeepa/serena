@@ -24,14 +24,13 @@
     "mcp_config": {
       "command": "python3",
       "args": [
-        "${__dirname}/server/serena_mcp.py",
-        "--context=${user_config.context:-desktop-app}",
-        "--log-level=${user_config.log_level:-INFO}"
+        "${__dirname}/server/mcp_wrapper.py"
       ],
       "env": {
         "PYTHONPATH": "${__dirname}/server/lib:${PYTHONPATH}",
-        "SERENA_LOG_LEVEL": "${user_config.log_level:-INFO}",
-        "SERENA_PROJECT_DIR": "${user_config.project_directory:-}"
+        "SERENA_LOG_LEVEL": "${user_config.log_level:-ERROR}",
+        "SERENA_PROJECT_DIR": "${user_config.project_directory:-}",
+        "SERENA_CONTEXT": "${user_config.context:-desktop-app}"
       }
     }
   },

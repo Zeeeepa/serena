@@ -44,7 +44,20 @@ def main():
     parser.add_argument("--enable-gui-log-window", action="store_true", help="Enable GUI log window")
     parser.add_argument("--trace-lsp-communication", action="store_true", help="Trace LSP communication")
     
+    # Parse args but handle the case where no args are provided (MCP stdio mode)
     args = parser.parse_args()
+    
+    # If running in MCP stdio mode (no arguments), suppress help and run with defaults
+    if len(sys.argv) == 1:
+        # Running in MCP stdio mode - use all defaults
+        args.project = None
+        args.context = DEFAULT_CONTEXT
+        args.modes = DEFAULT_MODES
+        args.log_level = "ERROR"  # Reduce logging for MCP mode
+        args.tool_timeout = None
+        args.enable_web_dashboard = False
+        args.enable_gui_log_window = False
+        args.trace_lsp_communication = False
     
     # Configure logging first
     log_level = getattr(std_logging, args.log_level.upper())
