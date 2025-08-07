@@ -49,39 +49,49 @@ When installing the extension, you'll be prompted to configure:
 ## Available Tools
 
 ### File Operations (9 tools)
-- `read_file_tool` - Read files with optional line ranges and content limits
-- `create_text_file_tool` - Create or overwrite text files
-- `list_dir_tool` - List directory contents with recursion (respects .gitignore)
-- `find_file_tool` - Find files matching patterns using glob syntax
-- `search_for_pattern_tool` - Search text patterns across files with context
-- `replace_regex_tool` - Replace text using regular expressions with match counting
-- `delete_lines_tool` - Delete specific line ranges from files
-- `replace_lines_tool` - Replace specific line ranges with new content
-- `insert_at_line_tool` - Insert text at specific line positions
+- `read_file` - Read files with optional line ranges and content limits
+- `create_text_file` - Create or overwrite text files
+- `list_dir` - List directory contents with recursion (respects .gitignore)
+- `find_file` - Find files matching patterns using glob syntax
+- `search_for_pattern` - Search text patterns across files with context
+- `replace_regex` - Replace text using regular expressions with match counting
+- `delete_lines` - Delete specific line ranges from files
+- `replace_lines` - Replace specific line ranges with new content
+- `insert_at_line` - Insert text at specific line positions
 
 ### Symbol Navigation (7 tools - LSP-based)
-- `get_symbols_overview_tool` - Get LSP-based overview of symbols in files
-- `find_symbol_tool` - Find symbol definitions using LSP with precise locations
-- `find_referencing_symbols_tool` - Find all symbol references using LSP
-- `replace_symbol_body_tool` - Replace function/method bodies using LSP-guided editing
-- `insert_after_symbol_tool` - Insert code after specific symbols using LSP positioning
-- `insert_before_symbol_tool` - Insert code before specific symbols using LSP positioning
-- `restart_language_server_tool` - Restart the LSP language server for improved resolution
+- `get_symbols_overview` - Get LSP-based overview of symbols in files
+- `find_symbol` - Find symbol definitions using LSP with precise locations
+- `find_referencing_symbols` - Find all symbol references using LSP
+- `replace_symbol_body` - Replace function/method bodies using LSP-guided editing
+- `insert_after_symbol` - Insert code after specific symbols using LSP positioning
+- `insert_before_symbol` - Insert code before specific symbols using LSP positioning
+- `restart_language_server` - Restart the LSP language server for improved resolution
 
 ### Memory Management (4 tools)
-- `write_memory_tool` - Store information in persistent agent memory with key-value pairs
-- `read_memory_tool` - Retrieve stored information from agent memory by key
-- `list_memories_tool` - List all stored memory entries with keys and metadata
-- `delete_memory_tool` - Delete specific memory entries by key
+- `write_memory` - Store information in persistent agent memory with key-value pairs
+- `read_memory` - Retrieve stored information from agent memory by key
+- `list_memories` - List all stored memory entries with keys and metadata
+- `delete_memory` - Delete specific memory entries by key
 
 ### Project Management (4 tools)
-- `activate_project_tool` - Activate a project directory for the current Serena session
-- `get_current_config_tool` - Get current Serena configuration including active tools
-- `switch_modes_tool` - Switch between different Serena agent modes and tool sets
-- `remove_project_tool` - Remove a project from Serena's project registry
+- `activate_project` - Activate a project directory for the current Serena session
+- `get_current_config` - Get current Serena configuration including active tools
+- `switch_modes` - Switch between different Serena agent modes and tool sets
+- `remove_project` - Remove a project from Serena's project registry
 
 ### System Integration (1 tool)
-- `execute_shell_command_tool` - Execute shell commands with output capture
+- `execute_shell_command` - Execute shell commands with output capture
+
+### Agent Intelligence (8 tools)
+- `check_onboarding_performed` - Check if user onboarding has been completed
+- `onboarding` - Perform initial user onboarding and setup
+- `think_about_collected_information` - Analyze and process collected information for insights
+- `think_about_task_adherence` - Evaluate adherence to assigned tasks and objectives
+- `think_about_whether_you_are_done` - Assess completion status of current tasks
+- `summarize_changes` - Generate summary of changes made during session
+- `prepare_for_new_conversation` - Prepare agent state for new conversation context
+- `initial_instructions` - Provide initial instructions and setup guidance
 
 ## Usage Examples
 

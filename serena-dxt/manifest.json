@@ -2,7 +2,7 @@
   "dxt_version": "0.1",
   "name": "serena",
   "display_name": "Serena - Coding Agent Toolkit",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A powerful coding agent toolkit providing semantic retrieval and editing capabilities",
   "long_description": "Serena is a comprehensive coding agent toolkit that provides essential semantic code retrieval and editing tools akin to an IDE's capabilities. It extracts code entities at the symbol level and exploits relational structure to enhance LLM efficiency. Features include file operations, symbol-based code navigation, memory management, shell command execution, and advanced code editing capabilities.",
   "author": {
@@ -39,104 +39,136 @@
   },
   "tools": [
     {
-      "name": "read_file_tool",
+      "name": "read_file",
       "description": "Read files within the project directory with optional line ranges and content limits"
     },
     {
-      "name": "create_text_file_tool", 
+      "name": "create_text_file", 
       "description": "Create or overwrite text files in the project directory"
     },
     {
-      "name": "list_dir_tool",
+      "name": "list_dir",
       "description": "List directory contents with optional recursive scanning (respects .gitignore)"
     },
     {
-      "name": "find_file_tool",
+      "name": "find_file",
       "description": "Find files matching patterns using glob syntax within the project"
     },
     {
-      "name": "replace_regex_tool",
+      "name": "replace_regex",
       "description": "Replace text in files using regular expressions with match counting"
     },
     {
-      "name": "delete_lines_tool",
+      "name": "delete_lines",
       "description": "Delete specific line ranges from files"
     },
     {
-      "name": "replace_lines_tool", 
+      "name": "replace_lines", 
       "description": "Replace specific line ranges in files with new content"
     },
     {
-      "name": "insert_at_line_tool",
+      "name": "insert_at_line",
       "description": "Insert text at specific line positions in files"
     },
     {
-      "name": "search_for_pattern_tool",
+      "name": "search_for_pattern",
       "description": "Search for text patterns across project files with context"
     },
     {
-      "name": "get_symbols_overview_tool",
-      "description": "Get LSP-based overview of symbols (functions, classes, variables) in files"
-    },
-    {
-      "name": "find_symbol_tool",
-      "description": "Find symbol definitions using LSP with precise location information"
-    },
-    {
-      "name": "find_referencing_symbols_tool",
-      "description": "Find all references to symbols using LSP across the project"
-    },
-    {
-      "name": "replace_symbol_body_tool",
-      "description": "Replace function/method bodies using LSP-guided editing"
-    },
-    {
-      "name": "insert_after_symbol_tool",
-      "description": "Insert code after specific symbols using LSP positioning"
-    },
-    {
-      "name": "insert_before_symbol_tool",
-      "description": "Insert code before specific symbols using LSP positioning"
-    },
-    {
-      "name": "restart_language_server_tool",
+      "name": "restart_language_server",
       "description": "Restart the LSP language server for improved symbol resolution"
     },
     {
-      "name": "execute_shell_command_tool",
-      "description": "Execute shell commands in the project directory with output capture"
+      "name": "get_symbols_overview",
+      "description": "Get LSP-based overview of symbols (functions, classes, variables) in files"
     },
     {
-      "name": "write_memory_tool",
+      "name": "find_symbol",
+      "description": "Find symbol definitions using LSP with precise location information"
+    },
+    {
+      "name": "find_referencing_symbols",
+      "description": "Find all references to symbols using LSP across the project"
+    },
+    {
+      "name": "replace_symbol_body",
+      "description": "Replace function/method bodies using LSP-guided editing"
+    },
+    {
+      "name": "insert_after_symbol",
+      "description": "Insert code after specific symbols using LSP positioning"
+    },
+    {
+      "name": "insert_before_symbol",
+      "description": "Insert code before specific symbols using LSP positioning"
+    },
+    {
+      "name": "write_memory",
       "description": "Store information in persistent agent memory with key-value pairs"
     },
     {
-      "name": "read_memory_tool",
+      "name": "read_memory",
       "description": "Retrieve stored information from agent memory by key"
     },
     {
-      "name": "list_memories_tool",
+      "name": "list_memories",
       "description": "List all stored memory entries with keys and metadata"
     },
     {
-      "name": "delete_memory_tool",
+      "name": "delete_memory",
       "description": "Delete specific memory entries by key"
     },
     {
-      "name": "activate_project_tool",
+      "name": "execute_shell_command",
+      "description": "Execute shell commands in the project directory with output capture"
+    },
+    {
+      "name": "activate_project",
       "description": "Activate a project directory for the current Serena session"
     },
     {
-      "name": "get_current_config_tool",
-      "description": "Get current Serena configuration including active tools and settings"
+      "name": "remove_project",
+      "description": "Remove a project from Serena's project registry"
     },
     {
-      "name": "switch_modes_tool",
+      "name": "switch_modes",
       "description": "Switch between different Serena agent modes and tool sets"
     },
     {
-      "name": "remove_project_tool",
-      "description": "Remove a project from Serena's project registry"
+      "name": "get_current_config",
+      "description": "Get current Serena configuration including active tools and settings"
+    },
+    {
+      "name": "check_onboarding_performed",
+      "description": "Check if user onboarding has been completed"
+    },
+    {
+      "name": "onboarding",
+      "description": "Perform initial user onboarding and setup"
+    },
+    {
+      "name": "think_about_collected_information",
+      "description": "Analyze and process collected information for insights"
+    },
+    {
+      "name": "think_about_task_adherence",
+      "description": "Evaluate adherence to assigned tasks and objectives"
+    },
+    {
+      "name": "think_about_whether_you_are_done",
+      "description": "Assess completion status of current tasks"
+    },
+    {
+      "name": "summarize_changes",
+      "description": "Generate summary of changes made during session"
+    },
+    {
+      "name": "prepare_for_new_conversation",
+      "description": "Prepare agent state for new conversation context"
+    },
+    {
+      "name": "initial_instructions",
+      "description": "Provide initial instructions and setup guidance"
     }
   ],
   "keywords": [
