@@ -2,7 +2,7 @@
   "dxt_version": "0.1",
   "name": "serena",
   "display_name": "Serena - Coding Agent Toolkit",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A powerful coding agent toolkit providing semantic retrieval and editing capabilities",
   "long_description": "Serena is a comprehensive coding agent toolkit that provides essential semantic code retrieval and editing tools akin to an IDE's capabilities. It extracts code entities at the symbol level and exploits relational structure to enhance LLM efficiency. Features include file operations, symbol-based code navigation, memory management, shell command execution, and advanced code editing capabilities.",
   "author": {

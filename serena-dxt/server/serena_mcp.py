@@ -22,7 +22,7 @@ try:
     
     # Import core Serena components to verify they're available
     from serena.agent import SerenaAgent
-    from serena.project import SerenaProject
+    from serena.project import Project
     from serena.tools.tools_base import ToolRegistry
     
 except ImportError as e:
