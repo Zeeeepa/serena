@@ -21,7 +21,7 @@ Serena is a comprehensive coding agent toolkit that enhances LLM capabilities wi
 
 ### Quick Install
 
-1. Download the `serena.dxt` file
+1. Download the `serena-dxt.dxt` file (37.8MB - includes all dependencies)
 2. Double-click to install in Claude Desktop, or use your MCP client's extension installer
 3. Configure your project directory when prompted
 
@@ -48,40 +48,40 @@ When installing the extension, you'll be prompted to configure:
 
 ## Available Tools
 
-### File Operations
-- `read_file` - Read files with optional line ranges
-- `create_text_file` - Create or overwrite files
-- `list_dir` - List directory contents with recursion
-- `find_file` - Find files matching patterns
-- `search_for_pattern` - Search text patterns across files
+### File Operations (9 tools)
+- `read_file_tool` - Read files with optional line ranges and content limits
+- `create_text_file_tool` - Create or overwrite text files
+- `list_dir_tool` - List directory contents with recursion (respects .gitignore)
+- `find_file_tool` - Find files matching patterns using glob syntax
+- `search_for_pattern_tool` - Search text patterns across files with context
+- `replace_regex_tool` - Replace text using regular expressions with match counting
+- `delete_lines_tool` - Delete specific line ranges from files
+- `replace_lines_tool` - Replace specific line ranges with new content
+- `insert_at_line_tool` - Insert text at specific line positions
 
-### File Editing
-- `replace_regex` - Replace text using regular expressions
-- `delete_lines` - Delete specific lines
-- `replace_lines` - Replace specific lines
-- `insert_at_line` - Insert text at specific positions
+### Symbol Navigation (7 tools - LSP-based)
+- `get_symbols_overview_tool` - Get LSP-based overview of symbols in files
+- `find_symbol_tool` - Find symbol definitions using LSP with precise locations
+- `find_referencing_symbols_tool` - Find all symbol references using LSP
+- `replace_symbol_body_tool` - Replace function/method bodies using LSP-guided editing
+- `insert_after_symbol_tool` - Insert code after specific symbols using LSP positioning
+- `insert_before_symbol_tool` - Insert code before specific symbols using LSP positioning
+- `restart_language_server_tool` - Restart the LSP language server for improved resolution
 
-### Symbol Navigation
-- `find_symbol` - Find functions, classes, variables
-- `find_referencing_symbols` - Find all symbol references
-- `get_symbols_overview` - Get symbol overview
-- `replace_symbol_body` - Replace function/method bodies
-- `insert_after_symbol` - Insert code after symbols
-- `insert_before_symbol` - Insert code before symbols
+### Memory Management (4 tools)
+- `write_memory_tool` - Store information in persistent agent memory with key-value pairs
+- `read_memory_tool` - Retrieve stored information from agent memory by key
+- `list_memories_tool` - List all stored memory entries with keys and metadata
+- `delete_memory_tool` - Delete specific memory entries by key
 
-### System Integration
-- `execute_shell_command` - Run shell commands
-- `restart_language_server` - Restart LSP for better accuracy
+### Project Management (4 tools)
+- `activate_project_tool` - Activate a project directory for the current Serena session
+- `get_current_config_tool` - Get current Serena configuration including active tools
+- `switch_modes_tool` - Switch between different Serena agent modes and tool sets
+- `remove_project_tool` - Remove a project from Serena's project registry
 
-### Memory Management
-- `write_memory` - Store information
-- `read_memory` - Retrieve stored information
-- `list_memories` - List all memories
-- `delete_memory` - Delete memory entries
-
-### Project Management
-- `activate_project` - Activate projects
-- `get_current_config` - View current configuration
+### System Integration (1 tool)
+- `execute_shell_command_tool` - Execute shell commands with output capture
 
 ## Usage Examples
 
@@ -123,4 +123,3 @@ If symbol navigation isn't working:
 ## License
 
 MIT License - see the original Serena project for full license details.
-

@@ -18,11 +18,17 @@ try:
     from serena.mcp import SerenaMCPFactorySingleProcess
     from serena.util.logging import MemoryLogHandler
     from serena.constants import DEFAULT_CONTEXT, DEFAULT_MODES
-    from sensai.util import logging
     import logging as std_logging
+    
+    # Import core Serena components to verify they're available
+    from serena.agent import SerenaAgent
+    from serena.project import SerenaProject
+    from serena.tools.tools_base import ToolRegistry
+    
 except ImportError as e:
     print(f"Error importing Serena modules: {e}", file=sys.stderr)
     print("Make sure Serena is properly installed or bundled with this extension.", file=sys.stderr)
+    print("Try running the setup.py script to install dependencies.", file=sys.stderr)
     sys.exit(1)
 
 def main():
@@ -83,4 +89,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
