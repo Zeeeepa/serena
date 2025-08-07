@@ -72,8 +72,9 @@ def main():
     
     # Use current directory as default project if not specified
     if not args.project:
-        args.project = os.getcwd()
-        logger.info(f"No project directory specified, using current directory: {args.project}")
+        # Check environment variable first, then fall back to current directory
+        args.project = os.environ.get("SERENA_PROJECT_DIR", os.getcwd())
+        logger.info(f"No project directory specified, using: {args.project}")
     
     try:
         # Initialize memory log handler
