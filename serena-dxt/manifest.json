@@ -25,15 +25,13 @@
       "command": "python3",
       "args": [
         "${__dirname}/server/serena_mcp.py",
-        "--project=${user_config.project_directory}",
-        "--context=${user_config.context}",
-        "--log-level=${user_config.log_level}",
-        "--tool-timeout=${user_config.tool_timeout}"
+        "--context=${user_config.context:-desktop-app}",
+        "--log-level=${user_config.log_level:-INFO}"
       ],
       "env": {
         "PYTHONPATH": "${__dirname}/server/lib:${PYTHONPATH}",
-        "SERENA_LOG_LEVEL": "${user_config.log_level}",
-        "SERENA_PROJECT_DIR": "${user_config.project_directory}"
+        "SERENA_LOG_LEVEL": "${user_config.log_level:-INFO}",
+        "SERENA_PROJECT_DIR": "${user_config.project_directory:-}"
       }
     }
   },

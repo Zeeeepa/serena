@@ -46,7 +46,7 @@ def main():
     
     args = parser.parse_args()
     
-    # Configure logging
+    # Configure logging first
     log_level = getattr(std_logging, args.log_level.upper())
     std_logging.basicConfig(
         level=log_level,
@@ -56,6 +56,11 @@ def main():
     
     logger = std_logging.getLogger(__name__)
     logger.info("Starting Serena MCP Server")
+    
+    # Use current directory as default project if not specified
+    if not args.project:
+        args.project = os.getcwd()
+        logger.info(f"No project directory specified, using current directory: {args.project}")
     
     try:
         # Initialize memory log handler
