@@ -11,6 +11,14 @@ MCPHub allows you to:
 - Monitor server status in real-time
 - Use smart routing to automatically find relevant tools
 
+## 🏠 Workspace Directory
+
+Serena automatically creates a `Workspace/` folder in your project root where:
+- All file operations are performed by default
+- Created files are stored and organized
+- Project work is kept separate from source code
+- Easy navigation between workspace and project files using `".."` paths
+
 ## 🚀 Quick Setup
 
 ### 1. Install MCPHub
@@ -302,4 +310,3 @@ Run multiple Serena instances for different projects:
 - HTTP endpoints are more compatible than SSE with various AI clients
 - Smart routing can automatically select the best Serena tool for tasks
 - Group-based access allows organizing Serena with other development tools
-
