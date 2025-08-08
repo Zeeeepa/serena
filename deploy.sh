@@ -15,6 +15,14 @@ echo -e "${CYAN}================================================================
 echo -e "${PURPLE}This script will install everything from scratch:${NC}"
 echo -e "${PURPLE}• Node.js & npm • Python & uv • Serena & SolidLSP • Gemini CLI${NC}"
 echo -e "${CYAN}================================================================${NC}"
+echo -e "${YELLOW}📋 MCP Installation Instructions (for AI assistants):${NC}"
+echo -e "${CYAN}This script follows the official Serena MCP installation process:${NC}"
+echo -e "${CYAN}1. Install uv package manager${NC}"
+echo -e "${CYAN}2. Clone/setup Serena repository${NC}"
+echo -e "${CYAN}3. Create .serena/project.yml configuration${NC}"
+echo -e "${CYAN}4. Configure MCP server with absolute paths${NC}"
+echo -e "${CYAN}5. Set up Gemini CLI with proper MCP server config${NC}"
+echo -e "${CYAN}================================================================${NC}"
 
 # Function to check if command exists
 command_exists() {
@@ -249,25 +257,34 @@ configure_gemini_mcp() {
     # Create .gemini directory
     mkdir -p .gemini
     
-    # Get absolute path to current directory
+    # Get absolute paths
     CURRENT_DIR=$(pwd)
+    SERENA_DIR="$CURRENT_DIR"
+    UV_PATH=$(which uv)
     
-    # Create Gemini CLI settings with Serena MCP server
+    if [ -z "$UV_PATH" ]; then
+        echo -e "${RED}❌ uv executable not found in PATH${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}Using uv at: $UV_PATH${NC}"
+    echo -e "${CYAN}Serena directory: $SERENA_DIR${NC}"
+    echo -e "${CYAN}Project directory: $CURRENT_DIR${NC}"
+    
+    # Create Gemini CLI settings with proper MCP server configuration
     cat > .gemini/settings.json << EOF
 {
   "mcpServers": {
     "serena": {
-      "command": "uv",
-      "args": ["run", "serena-mcp-server", "--project", "$CURRENT_DIR"],
-      "env": {
-        "PYTHONPATH": ""
-      }
+      "command": "$UV_PATH",
+      "args": ["run", "--directory", "$SERENA_DIR", "serena-mcp-server", "$CURRENT_DIR/.serena/project.yml"]
     }
   }
 }
 EOF
     
     echo -e "${GREEN}✅ Gemini CLI configured with Serena MCP server${NC}"
+    echo -e "${CYAN}MCP server will use project config: $CURRENT_DIR/.serena/project.yml${NC}"
 }
 
 # Function to initialize Serena project
@@ -277,9 +294,65 @@ initialize_serena_project() {
     # Create .serena directory
     mkdir -p .serena
     
-    # Initialize Serena project (this will create project.yml)
-    echo -e "${CYAN}Running Serena initialization...${NC}"
-    uv run serena-mcp-server --project . --help > /dev/null 2>&1 || true
+    # Check if project.yml exists, if not create it from template
+    if [ ! -f ".serena/project.yml" ]; then
+        echo -e "${CYAN}Creating project.yml configuration...${NC}"
+        
+        # Create a basic project.yml for the current directory
+        cat > .serena/project.yml << 'EOF'
+# Serena Project Configuration
+# This file configures how Serena analyzes and works with your project
+
+# Project metadata
+name: "serena-gemini-workspace"
+description: "Serena + Gemini CLI Integration Workspace"
+
+# Project language and framework detection
+language: "auto"  # auto-detect or specify: python, javascript, typescript, etc.
+
+# File patterns to include/exclude
+include_patterns:
+  - "**/*.py"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.jsx"
+  - "**/*.tsx"
+  - "**/*.md"
+  - "**/*.yml"
+  - "**/*.yaml"
+  - "**/*.json"
+  - "**/*.toml"
+  - "**/*.sh"
+
+exclude_patterns:
+  - "**/__pycache__/**"
+  - "**/node_modules/**"
+  - "**/.git/**"
+  - "**/.venv/**"
+  - "**/venv/**"
+  - "**/.env"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/*.pyc"
+  - "**/.DS_Store"
+
+# Analysis settings
+analysis:
+  max_file_size: 1048576  # 1MB
+  follow_symlinks: false
+  
+# Tool configurations
+tools:
+  enabled: true
+  semantic_search: true
+  code_analysis: true
+  file_operations: true
+EOF
+        
+        echo -e "${GREEN}✅ Created .serena/project.yml${NC}"
+    else
+        echo -e "${GREEN}✅ .serena/project.yml already exists${NC}"
+    fi
     
     echo -e "${GREEN}✅ Serena project initialized${NC}"
 }
@@ -438,11 +511,20 @@ main() {
     echo "   • Project structure and launch scripts"
     echo ""
     echo -e "${CYAN}🔧 Files created:${NC}"
-    echo "   • pyproject.toml (Python project config)"
+    echo "   • pyproject.toml (Python workspace config)"
     echo "   • .env (API key storage)"
     echo "   • .gitignore (Git ignore rules)"
-    echo "   • .gemini/settings.json (MCP server config)"
+    echo "   • .serena/project.yml (Serena project configuration)"
+    echo "   • .gemini/settings.json (MCP server config with absolute paths)"
     echo "   • launch-gemini-with-serena.sh (Launch script)"
+    echo ""
+    echo -e "${YELLOW}📋 MCP Configuration Details:${NC}"
+    UV_PATH=$(which uv)
+    CURRENT_DIR=$(pwd)
+    echo "   • UV executable: $UV_PATH"
+    echo "   • Serena directory: $CURRENT_DIR"
+    echo "   • Project config: $CURRENT_DIR/.serena/project.yml"
+    echo "   • MCP server command: uv run --directory $CURRENT_DIR serena-mcp-server"
     echo ""
     echo -e "${YELLOW}🚀 Ready for natural language coding with Serena + Gemini CLI!${NC}"
 }
