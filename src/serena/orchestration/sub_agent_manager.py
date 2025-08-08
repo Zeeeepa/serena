@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 
 import yaml
-from agno import Agno
+from agno.agent import Agent as Agno
 
 
 class AgentType(Enum):
