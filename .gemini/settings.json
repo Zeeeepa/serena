@@ -1,0 +1,52 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uv",
+      "args": ["run", "serena-mcp-server", "--project", "."],
+      "cwd": ".",
+      "timeout": 30000,
+      "description": "Serena coding agent toolkit with semantic analysis and LSP integration",
+      "trust": true,
+      "includeTools": [
+        "find_symbol",
+        "find_referencing_symbols", 
+        "find_referencing_code_snippets",
+        "get_symbols_overview",
+        "replace_symbol_body",
+        "insert_before_symbol",
+        "insert_after_symbol",
+        "replace_lines",
+        "insert_at_line",
+        "delete_lines",
+        "create_text_file",
+        "read_file",
+        "list_dir",
+        "search_for_pattern",
+        "write_memory",
+        "read_memory",
+        "list_memories",
+        "delete_memory",
+        "activate_project",
+        "onboarding",
+        "get_current_config",
+        "restart_language_server",
+        "execute_shell_command",
+        "switch_modes",
+        "summarize_changes",
+        "check_onboarding_performed",
+        "initial_instructions",
+        "prepare_for_new_conversation",
+        "remove_project",
+        "think_about_collected_information",
+        "think_about_task_adherence",
+        "think_about_whether_you_are_done"
+      ]
+    }
+  },
+  "approvalMode": "auto",
+  "showMemoryUsage": true,
+  "telemetry": {
+    "enabled": false
+  }
+}
+

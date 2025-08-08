@@ -1,0 +1,45 @@
+# Multi-stage Dockerfile for Serena + Gemini CLI Integration
+FROM node:20-slim AS node-base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (Python package manager)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy package files
+COPY package*.json ./
+COPY pyproject.toml uv.lock ./
+
+# Install Node.js dependencies
+RUN npm ci
+
+# Install Python dependencies
+RUN uv sync
+
+# Copy source code
+COPY . .
+
+# Build Gemini CLI
+RUN npm run build
+
+# Make startup script executable
+RUN chmod +x start-serena-gemini.sh
+
+# Expose ports
+EXPOSE 3000 8080
+
+# Default command
+CMD ["./start-serena-gemini.sh"]
+
