@@ -6,23 +6,41 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
 NC='\033[0m'
 
-echo -e "${BLUE}🚀 Serena + Gemini CLI Deployment Script${NC}"
-echo "=========================================="
+echo -e "${BLUE}🚀 Standalone Serena + Gemini CLI Deployment Script${NC}"
+echo -e "${CYAN}================================================================${NC}"
+echo -e "${PURPLE}This script will install everything from scratch:${NC}"
+echo -e "${PURPLE}• Node.js & npm • Python & uv • Serena & SolidLSP • Gemini CLI${NC}"
+echo -e "${CYAN}================================================================${NC}"
 
 # Function to check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to install Node.js via nvm if not present
+# Function to detect OS
+detect_os() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        echo "linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "macos"
+    elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+        echo "windows"
+    else
+        echo "unknown"
+    fi
+}
+
+# Function to install Node.js via nvm
 install_nodejs() {
-    echo -e "\n${YELLOW}📦 Installing Node.js...${NC}"
+    echo -e "\n${YELLOW}📦 Installing Node.js via nvm...${NC}"
     
     # Install nvm if not present
     if ! command_exists nvm; then
-        echo "Installing nvm..."
+        echo -e "${CYAN}Installing nvm...${NC}"
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -30,105 +48,226 @@ install_nodejs() {
     fi
     
     # Install and use Node.js LTS
+    echo -e "${CYAN}Installing Node.js LTS...${NC}"
     nvm install --lts
     nvm use --lts
     nvm alias default lts/*
+    
+    # Reload shell to ensure node/npm are available
+    export PATH="$HOME/.nvm/versions/node/$(nvm version default)/bin:$PATH"
 }
 
-# Function to install uv if not present
-install_uv() {
-    echo -e "\n${YELLOW}🐍 Installing uv (Python package manager)...${NC}"
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    source $HOME/.cargo/env
+# Function to install Python and uv
+install_python_uv() {
+    echo -e "\n${YELLOW}🐍 Installing Python and uv...${NC}"
+    
+    OS=$(detect_os)
+    
+    # Install Python if not present
+    if ! command_exists python3; then
+        echo -e "${CYAN}Installing Python 3...${NC}"
+        case $OS in
+            "linux")
+                if command_exists apt-get; then
+                    sudo apt-get update
+                    sudo apt-get install -y python3 python3-pip python3-venv
+                elif command_exists yum; then
+                    sudo yum install -y python3 python3-pip
+                elif command_exists pacman; then
+                    sudo pacman -S python python-pip
+                else
+                    echo -e "${RED}❌ Unsupported Linux distribution. Please install Python 3 manually.${NC}"
+                    exit 1
+                fi
+                ;;
+            "macos")
+                if command_exists brew; then
+                    brew install python@3.11
+                else
+                    echo -e "${CYAN}Installing Homebrew first...${NC}"
+                    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+                    brew install python@3.11
+                fi
+                ;;
+            "windows")
+                echo -e "${RED}❌ Please install Python 3.11+ from https://python.org/downloads/${NC}"
+                exit 1
+                ;;
+            *)
+                echo -e "${RED}❌ Unsupported OS. Please install Python 3.11+ manually.${NC}"
+                exit 1
+                ;;
+        esac
+    else
+        echo -e "${GREEN}✅ Python found: $(python3 --version)${NC}"
+    fi
+    
+    # Install uv
+    if ! command_exists uv; then
+        echo -e "${CYAN}Installing uv (Python package manager)...${NC}"
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        source $HOME/.cargo/env
+        # Add to PATH for current session
+        export PATH="$HOME/.cargo/bin:$PATH"
+    else
+        echo -e "${GREEN}✅ uv found: $(uv --version)${NC}"
+    fi
 }
 
-# Check and install dependencies
-echo -e "\n${YELLOW}🔍 Checking dependencies...${NC}"
+# Function to create project structure and pyproject.toml
+create_project_structure() {
+    echo -e "\n${YELLOW}📁 Creating project structure...${NC}"
+    
+    # Create pyproject.toml for Serena installation
+    cat > pyproject.toml << 'EOF'
+[project]
+name = "serena-gemini-integration"
+version = "0.1.0"
+description = "Serena + Gemini CLI Integration"
+dependencies = [
+    "serena-agent>=0.1.0",
+]
 
-# Check Node.js
-if ! command_exists node; then
-    install_nodejs
-else
-    echo -e "${GREEN}✅ Node.js found: $(node --version)${NC}"
-fi
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-# Check npm
-if ! command_exists npm; then
-    echo -e "${RED}❌ npm not found. Please install Node.js properly.${NC}"
-    exit 1
-else
-    echo -e "${GREEN}✅ npm found: $(npm --version)${NC}"
-fi
+[tool.uv]
+dev-dependencies = []
+EOF
+    
+    echo -e "${GREEN}✅ Created pyproject.toml${NC}"
+    
+    # Create .gitignore
+    cat > .gitignore << 'EOF'
+# Environment files
+.env
+.env.local
+.env.*.local
 
-# Check uv
-if ! command_exists uv; then
-    install_uv
-else
-    echo -e "${GREEN}✅ uv found: $(uv --version)${NC}"
-fi
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Install Gemini CLI
-echo -e "\n${YELLOW}💎 Installing Gemini CLI...${NC}"
-if ! command_exists gemini; then
-    npm install -g @google/gemini-cli
-    echo -e "${GREEN}✅ Gemini CLI installed successfully${NC}"
-else
-    echo -e "${GREEN}✅ Gemini CLI already installed${NC}"
-fi
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
 
-# Setup Python environment
-echo -e "\n${YELLOW}🐍 Setting up Python environment...${NC}"
-if [ ! -d ".venv" ]; then
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Serena
+.serena/
+
+# Node modules (if any)
+node_modules/
+EOF
+    
+    echo -e "${GREEN}✅ Created .gitignore${NC}"
+}
+
+# Function to install Serena and SolidLSP
+install_serena() {
+    echo -e "\n${YELLOW}🔧 Installing Serena and SolidLSP...${NC}"
+    
+    # Create virtual environment
+    echo -e "${CYAN}Creating Python virtual environment...${NC}"
     uv venv --python 3.11
-    echo -e "${GREEN}✅ Virtual environment created${NC}"
-else
-    echo -e "${GREEN}✅ Virtual environment already exists${NC}"
-fi
+    
+    # Install Serena
+    echo -e "${CYAN}Installing Serena agent...${NC}"
+    uv add serena-agent
+    
+    echo -e "${GREEN}✅ Serena and SolidLSP installed successfully${NC}"
+}
 
-# Install Python dependencies
-echo -e "\n${YELLOW}📦 Installing Python dependencies...${NC}"
-uv sync
-echo -e "${GREEN}✅ Python dependencies installed${NC}"
+# Function to install Gemini CLI
+install_gemini_cli() {
+    echo -e "\n${YELLOW}💎 Installing Gemini CLI...${NC}"
+    
+    # Ensure npm is available
+    if ! command_exists npm; then
+        echo -e "${RED}❌ npm not found. Node.js installation may have failed.${NC}"
+        exit 1
+    fi
+    
+    # Install Gemini CLI globally
+    echo -e "${CYAN}Installing @google/gemini-cli...${NC}"
+    npm install -g @google/gemini-cli
+    
+    echo -e "${GREEN}✅ Gemini CLI installed successfully${NC}"
+}
 
-# Setup Serena project
-echo -e "\n${YELLOW}⚙️ Setting up Serena project...${NC}"
-if [ ! -f ".serena/project.yml" ]; then
-    mkdir -p .serena
-    uv run serena-mcp-server --project . --help > /dev/null 2>&1 || true
-    echo -e "${GREEN}✅ Serena project initialized${NC}"
-else
-    echo -e "${GREEN}✅ Serena project already configured${NC}"
-fi
+# Function to setup API key
+setup_api_key() {
+    echo -e "\n${YELLOW}🔑 Setting up Gemini API key...${NC}"
+    
+    if [ ! -f ".env" ]; then
+        echo -e "${CYAN}Please enter your Gemini API key (get it from https://aistudio.google.com/app/apikey):${NC}"
+        read -s GEMINI_API_KEY
+        
+        if [ -z "$GEMINI_API_KEY" ]; then
+            echo -e "${RED}❌ API key cannot be empty${NC}"
+            exit 1
+        fi
+        
+        echo "GEMINI_API_KEY=$GEMINI_API_KEY" > .env
+        echo -e "${GREEN}✅ API key saved to .env file${NC}"
+    else
+        echo -e "${GREEN}✅ .env file already exists${NC}"
+    fi
+}
 
-# Setup API key
-echo -e "\n${YELLOW}🔑 Setting up API key...${NC}"
-if [ ! -f ".env" ]; then
-    echo "Please enter your Gemini API key:"
-    read -s GEMINI_API_KEY
-    echo "GEMINI_API_KEY=$GEMINI_API_KEY" > .env
-    echo -e "${GREEN}✅ API key saved to .env file${NC}"
-else
-    echo -e "${GREEN}✅ .env file already exists${NC}"
-fi
-
-# Ensure .env is in .gitignore
-if ! grep -q "^\.env$" .gitignore 2>/dev/null; then
-    echo ".env" >> .gitignore
-    echo -e "${GREEN}✅ Added .env to .gitignore${NC}"
-else
-    echo -e "${GREEN}✅ .env already in .gitignore${NC}"
-fi
-
-# Setup Gemini CLI configuration
-echo -e "\n${YELLOW}💎 Configuring Gemini CLI...${NC}"
-mkdir -p .gemini
-
-cat > .gemini/settings.json << 'EOF'
+# Function to configure Gemini CLI with Serena MCP
+configure_gemini_mcp() {
+    echo -e "\n${YELLOW}⚙️ Configuring Gemini CLI with Serena MCP server...${NC}"
+    
+    # Create .gemini directory
+    mkdir -p .gemini
+    
+    # Get absolute path to current directory
+    CURRENT_DIR=$(pwd)
+    
+    # Create Gemini CLI settings with Serena MCP server
+    cat > .gemini/settings.json << EOF
 {
   "mcpServers": {
     "serena": {
       "command": "uv",
-      "args": ["run", "serena-mcp-server", "--project", "."],
+      "args": ["run", "serena-mcp-server", "--project", "$CURRENT_DIR"],
       "env": {
         "PYTHONPATH": ""
       }
@@ -136,33 +275,187 @@ cat > .gemini/settings.json << 'EOF'
   }
 }
 EOF
+    
+    echo -e "${GREEN}✅ Gemini CLI configured with Serena MCP server${NC}"
+}
 
-echo -e "${GREEN}✅ Gemini CLI configured with Serena MCP server${NC}"
+# Function to initialize Serena project
+initialize_serena_project() {
+    echo -e "\n${YELLOW}🏗️ Initializing Serena project...${NC}"
+    
+    # Create .serena directory
+    mkdir -p .serena
+    
+    # Initialize Serena project (this will create project.yml)
+    echo -e "${CYAN}Running Serena initialization...${NC}"
+    uv run serena-mcp-server --project . --help > /dev/null 2>&1 || true
+    
+    echo -e "${GREEN}✅ Serena project initialized${NC}"
+}
 
-# Make launch script executable
-if [ -f "launch-gemini-with-serena.sh" ]; then
-    chmod +x launch-gemini-with-serena.sh
-    echo -e "${GREEN}✅ Launch script made executable${NC}"
+# Function to create launch script
+create_launch_script() {
+    echo -e "\n${YELLOW}📝 Creating launch script...${NC}"
+    
+    cat > launch-gemini-with-serena.sh << 'EOF'
+#!/bin/bash
+
+# Colors for output
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${BLUE}🚀 Launching Gemini CLI with Serena MCP Server${NC}"
+echo "=============================================="
+
+# Check if .env exists
+if [ ! -f ".env" ]; then
+    echo -e "${RED}❌ .env file not found. Please run ./deploy.sh first.${NC}"
+    exit 1
 fi
 
-# Run tests if available
-if [ -f "test_env_setup.sh" ]; then
-    echo -e "\n${YELLOW}🧪 Running environment tests...${NC}"
-    chmod +x test_env_setup.sh
-    ./test_env_setup.sh
+# Load environment variables
+source .env
+
+# Check if API key is set
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo -e "${RED}❌ GEMINI_API_KEY not found in .env file${NC}"
+    exit 1
 fi
 
-if [ -f "test_full_integration.sh" ]; then
-    echo -e "\n${YELLOW}🧪 Running integration tests...${NC}"
-    chmod +x test_full_integration.sh
-    ./test_full_integration.sh
-fi
-
-echo -e "\n${GREEN}🎉 Deployment completed successfully!${NC}"
-echo -e "${BLUE}💡 Next steps:${NC}"
-echo "   1. Run: ./launch-gemini-with-serena.sh"
-echo "   2. In Gemini CLI, try: /mcp"
-echo "   3. Ask: 'What Serena tools are available?'"
-echo "   4. Start coding with natural language!"
+echo -e "${GREEN}✅ Environment loaded${NC}"
+echo -e "${YELLOW}💡 Starting Gemini CLI with Serena integration...${NC}"
+echo -e "${BLUE}📚 Try these commands once started:${NC}"
+echo "   /mcp                                    # Check MCP server status"
+echo "   What Serena tools are available?        # Test tool discovery"
+echo "   Show me the project structure           # Test project analysis"
+echo "   Find all Python functions in this project  # Test code search"
 echo ""
-echo -e "${YELLOW}📚 For detailed documentation, see INTEGRATION_SUCCESS.md${NC}"
+
+# Launch Gemini CLI
+gemini
+EOF
+    
+    chmod +x launch-gemini-with-serena.sh
+    echo -e "${GREEN}✅ Launch script created and made executable${NC}"
+}
+
+# Function to run validation tests
+run_validation_tests() {
+    echo -e "\n${YELLOW}🧪 Running validation tests...${NC}"
+    
+    # Test Python environment
+    echo -e "${CYAN}Testing Python environment...${NC}"
+    if uv run python --version > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ Python environment working${NC}"
+    else
+        echo -e "${RED}❌ Python environment test failed${NC}"
+        return 1
+    fi
+    
+    # Test Serena installation
+    echo -e "${CYAN}Testing Serena installation...${NC}"
+    if uv run serena-mcp-server --help > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ Serena MCP server working${NC}"
+    else
+        echo -e "${RED}❌ Serena MCP server test failed${NC}"
+        return 1
+    fi
+    
+    # Test Gemini CLI installation
+    echo -e "${CYAN}Testing Gemini CLI installation...${NC}"
+    if command_exists gemini; then
+        echo -e "${GREEN}✅ Gemini CLI installed and accessible${NC}"
+    else
+        echo -e "${RED}❌ Gemini CLI test failed${NC}"
+        return 1
+    fi
+    
+    # Test MCP configuration
+    echo -e "${CYAN}Testing MCP configuration...${NC}"
+    if [ -f ".gemini/settings.json" ]; then
+        echo -e "${GREEN}✅ Gemini MCP configuration exists${NC}"
+    else
+        echo -e "${RED}❌ Gemini MCP configuration missing${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}🎉 All validation tests passed!${NC}"
+}
+
+# Main deployment flow
+main() {
+    echo -e "\n${YELLOW}🔍 Starting dependency installation...${NC}"
+    
+    # Check and install Node.js
+    if ! command_exists node; then
+        install_nodejs
+    else
+        echo -e "${GREEN}✅ Node.js found: $(node --version)${NC}"
+    fi
+    
+    # Check and install Python & uv
+    if ! command_exists python3 || ! command_exists uv; then
+        install_python_uv
+    else
+        echo -e "${GREEN}✅ Python found: $(python3 --version)${NC}"
+        if ! command_exists uv; then
+            install_python_uv
+        else
+            echo -e "${GREEN}✅ uv found: $(uv --version)${NC}"
+        fi
+    fi
+    
+    # Create project structure
+    create_project_structure
+    
+    # Install Serena and SolidLSP
+    install_serena
+    
+    # Install Gemini CLI
+    install_gemini_cli
+    
+    # Setup API key
+    setup_api_key
+    
+    # Initialize Serena project
+    initialize_serena_project
+    
+    # Configure Gemini CLI with Serena MCP
+    configure_gemini_mcp
+    
+    # Create launch script
+    create_launch_script
+    
+    # Run validation tests
+    run_validation_tests
+    
+    echo -e "\n${GREEN}🎉 Standalone deployment completed successfully!${NC}"
+    echo -e "${BLUE}💡 Next steps:${NC}"
+    echo "   1. Run: ./launch-gemini-with-serena.sh"
+    echo "   2. In Gemini CLI, try: /mcp"
+    echo "   3. Ask: 'What Serena tools are available?'"
+    echo "   4. Start coding with natural language!"
+    echo ""
+    echo -e "${PURPLE}📋 What was installed:${NC}"
+    echo "   • Node.js & npm (via nvm)"
+    echo "   • Python 3.11+ & uv package manager"
+    echo "   • Serena agent with SolidLSP"
+    echo "   • Gemini CLI (@google/gemini-cli)"
+    echo "   • Complete MCP server configuration"
+    echo "   • Project structure and launch scripts"
+    echo ""
+    echo -e "${CYAN}🔧 Files created:${NC}"
+    echo "   • pyproject.toml (Python project config)"
+    echo "   • .env (API key storage)"
+    echo "   • .gitignore (Git ignore rules)"
+    echo "   • .gemini/settings.json (MCP server config)"
+    echo "   • launch-gemini-with-serena.sh (Launch script)"
+    echo ""
+    echo -e "${YELLOW}🚀 Ready for natural language coding with Serena + Gemini CLI!${NC}"
+}
+
+# Run main function
+main
