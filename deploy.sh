@@ -70,7 +70,7 @@ fi
 # Install Gemini CLI
 echo -e "\n${YELLOW}💎 Installing Gemini CLI...${NC}"
 if ! command_exists gemini; then
-    npm install -g @google/generative-ai-cli
+    npm install -g @google/gemini-cli
     echo -e "${GREEN}✅ Gemini CLI installed successfully${NC}"
 else
     echo -e "${GREEN}✅ Gemini CLI already installed${NC}"
