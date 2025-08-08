@@ -43,6 +43,7 @@ Serena can be integrated with an LLM in several ways:
  * by using the **model context protocol (MCP)**.  
    Serena provides an MCP server which integrates with 
      * Claude Code and Claude Desktop, 
+     * **Gemini CLI** - Natural language coding interface with Google's Gemini models
      * IDEs like VSCode, Cursor or IntelliJ,
      * Extensions like Cline or Roo Code
      * and many others, including [the ChatGPT app soon](https://x.com/OpenAIDevs/status/1904957755829481737)
@@ -110,6 +111,7 @@ implementation.
   * [Project Activation & Indexing](#project-activation--indexing)
   * [Claude Code](#claude-code)
   * [Claude Desktop](#claude-desktop)
+  * [Gemini CLI](#gemini-cli)
   * [Other MCP Clients (Cline, Roo-Code, Cursor, Windsurf, etc.)](#other-mcp-clients-cline-roo-code-cursor-windsurf-etc)
   * [Agno Agent](#agno-agent)
   * [Other Agent Frameworks](#other-agent-frameworks)
@@ -421,6 +423,56 @@ community version](https://github.com/aaddrick/claude-desktop-debian).
 After restarting, you should see Serena's tools in your chat interface (notice the small hammer icon).
 
 For more information on MCP servers with Claude Desktop, see [the official quick start guide](https://modelcontextprotocol.io/quickstart/user).
+
+### Gemini CLI
+
+**🚀 One-Command Setup**: Serena now includes a complete deployment script for seamless integration with Google's Gemini CLI, providing a natural language coding interface powered by Gemini models.
+
+#### Quick Start
+
+1. **Run the deployment script**:
+   ```bash
+   ./deploy.sh
+   ```
+   This automatically installs all dependencies (Node.js, Gemini CLI, Python environment) and configures the integration.
+
+2. **Launch the integrated environment**:
+   ```bash
+   ./launch-gemini-with-serena.sh
+   ```
+
+3. **Start coding with natural language**:
+   ```bash
+   /mcp                                    # Check MCP server status
+   What Serena tools are available?        # Test tool discovery  
+   Show me the project structure           # Test project analysis
+   Find all Python functions in this project  # Test code search
+   Help me understand the codebase         # Test AI assistance
+   ```
+
+#### Features
+
+- **🔐 Secure API Key Management**: Automatic `.env` file handling with git-ignore protection
+- **🛠️ 26 Serena Tools**: Full access to file operations, code analysis, editing, memory, and AI reasoning
+- **🧪 Comprehensive Testing**: Built-in test suites for environment and integration validation
+- **📚 Complete Documentation**: Detailed guides and usage examples
+- **🔄 Easy Maintenance**: Simple API key updates and troubleshooting tools
+
+#### What You Get
+
+The Gemini CLI integration transforms your development workflow by providing:
+- **Natural language coding interface** - Describe what you want, AI implements it
+- **Semantic code understanding** - AI analyzes and refactors code intelligently  
+- **Automated workflows** - Complex tasks handled through simple conversations
+- **Production-ready setup** - Secure environment with proper secret management
+
+#### Requirements
+
+- **Gemini API Key**: Get yours from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- **System Requirements**: Linux/macOS/Windows with bash support
+- **Dependencies**: Automatically installed by `deploy.sh` (Node.js, Python 3.11+, uv)
+
+The deployment script handles all technical setup, making this the fastest way to get started with AI-powered natural language coding using Serena's powerful semantic tools.
 
 ### Other MCP Clients (Cline, Roo-Code, Cursor, Windsurf, etc.)
 
@@ -865,4 +917,3 @@ Here is the full list of Serena's tools with a short description (output of `uv 
  * `think_about_task_adherence`: Thinking tool for determining whether the agent is still on track with the current task.
  * `think_about_whether_you_are_done`: Thinking tool for determining whether the task is truly completed.
  * `write_memory`: Writes a named memory (for future reference) to Serena's project-specific memory store.
-
