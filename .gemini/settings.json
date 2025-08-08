@@ -4,9 +4,6 @@
       "command": "uv",
       "args": ["run", "serena-mcp-server", "--project", "."],
       "cwd": ".",
-      "env": {
-        "PYTHONPATH": "/tmp/Zeeeepa/serena/.venv/lib/python3.11/site-packages:/tmp/Zeeeepa/serena/src"
-      },
       "timeout": 30000,
       "description": "Serena coding agent toolkit with semantic analysis and LSP integration",
       "trust": true,
