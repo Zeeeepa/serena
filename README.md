@@ -43,6 +43,7 @@ Serena can be integrated with an LLM in several ways:
  * by using the **model context protocol (MCP)**.  
    Serena provides an MCP server which integrates with 
      * Claude Code and Claude Desktop, 
+     * **Gemini CLI** - Google's terminal-based AI agent (see [integration guide](#gemini-cli-integration)),
      * IDEs like VSCode, Cursor or IntelliJ,
      * Extensions like Cline or Roo Code
      * and many others, including [the ChatGPT app soon](https://x.com/OpenAIDevs/status/1904957755829481737)
@@ -417,6 +418,81 @@ community version](https://github.com/aaddrick/claude-desktop-debian).
 ⚠️ Some clients, currently including Claude Desktop, may leave behind zombie processes. You will have to find and terminate them manually then.
     With Serena, you can activate the [dashboard](#serenas-logs-the-dashboard-and-gui-tool) to prevent unnoted processes and also use the dashboard
     for shutting down Serena.
+
+
+### Gemini CLI Integration
+
+Serena integrates seamlessly with [Gemini CLI](https://github.com/google/gemini-cli), Google's powerful terminal-based AI agent, combining Gemini's conversational interface with Serena's advanced semantic code analysis capabilities.
+
+**🚀 Quick Start:**
+
+```bash
+# 1. Test the integration
+./test-integration.sh
+
+# 2. Start the integrated environment  
+./start-serena-gemini.sh
+```
+
+**📋 Configuration:**
+
+Create `.gemini/settings.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uv",
+      "args": ["run", "serena-mcp-server", "--project", "."],
+      "cwd": ".",
+      "timeout": 30000,
+      "description": "Serena coding agent toolkit with semantic analysis",
+      "trust": true
+    }
+  }
+}
+```
+
+**✨ What You Get:**
+
+- **Enhanced Code Analysis** - Gemini CLI gains access to Serena's LSP-based semantic analysis
+- **Advanced Symbol Operations** - Find references, navigate code, edit symbols precisely  
+- **Multi-language Support** - Python, TypeScript, Go, Rust, Java, C#, and more
+- **Project Memory** - Persistent knowledge storage across sessions
+- **Unified Workflow** - Single interface combining conversational AI with deep code understanding
+
+**🔧 Available Tools:**
+
+Once integrated, Gemini CLI has access to all of Serena's powerful tools:
+- `find_symbol`, `find_referencing_symbols` - Code navigation and analysis
+- `replace_symbol_body`, `insert_before_symbol` - Precise code editing
+- `write_memory`, `read_memory` - Project knowledge persistence
+- `onboarding`, `get_symbols_overview` - Project structure analysis
+- And [many more](#full-list-of-tools)!
+
+**📖 Documentation:**
+
+- **[Complete Integration Guide](SERENA_GEMINI_INTEGRATION.md)** - Detailed setup and usage
+- **[Quick Start Guide](QUICK_START.md)** - Essential commands and troubleshooting
+- **[Workflow Examples](examples/workflow-demo.md)** - Common usage patterns
+
+**🐳 Docker Support:**
+
+```bash
+# Run with Docker Compose
+docker-compose -f docker-compose.serena-gemini.yml up
+```
+
+**Example Usage:**
+
+```
+You: "Find all functions that call the authenticate method"
+You: "Refactor the UserService class to use dependency injection"  
+You: "Help me understand this codebase structure"
+You: "Create a memory note about the authentication flow"
+```
+
+Gemini CLI will automatically use Serena's tools to provide deep code analysis and make precise modifications!
 
 After restarting, you should see Serena's tools in your chat interface (notice the small hammer icon).
 
@@ -865,4 +941,3 @@ Here is the full list of Serena's tools with a short description (output of `uv 
  * `think_about_task_adherence`: Thinking tool for determining whether the agent is still on track with the current task.
  * `think_about_whether_you_are_done`: Thinking tool for determining whether the task is truly completed.
  * `write_memory`: Writes a named memory (for future reference) to Serena's project-specific memory store.
-
