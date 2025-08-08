@@ -37,6 +37,74 @@ print_step() {
     echo -e "${CYAN}[STEP]${NC} $1"
 }
 
+# Function to handle GEMINI_API_KEY setup
+setup_gemini_api_key() {
+    local env_file=".env"
+    
+    print_step "Checking for GEMINI_API_KEY configuration..."
+    
+    # Check if .env file exists and contains GEMINI_API_KEY
+    if [[ -f "$env_file" ]] && grep -q "GEMINI_API_KEY=" "$env_file"; then
+        print_success ".env file found with GEMINI_API_KEY"
+        
+        # Source the .env file to load the API key
+        source "$env_file"
+        
+        # Validate that the API key is not empty
+        if [[ -n "$GEMINI_API_KEY" ]]; then
+            print_success "GEMINI_API_KEY loaded from .env file"
+            return 0
+        else
+            print_warning "GEMINI_API_KEY found in .env but is empty"
+        fi
+    else
+        print_status "No .env file found or GEMINI_API_KEY not present"
+    fi
+    
+    # If we get here, we need to ask for the API key
+    echo
+    print_status "🔑 Gemini API Key Setup Required"
+    echo -e "${YELLOW}To use Gemini CLI with Serena, you need a Gemini API key.${NC}"
+    echo -e "${BLUE}You can get one from: https://aistudio.google.com/app/apikey${NC}"
+    echo
+    
+    # Prompt for API key (not hidden so user can see what they're typing)
+    read -p "Please enter your Gemini API key: " gemini_api_key
+    
+    # Validate input
+    if [[ -z "$gemini_api_key" ]]; then
+        print_error "No API key provided. Deployment cannot continue without API key."
+        exit 1
+    fi
+    
+    # Create or update .env file
+    if [[ -f "$env_file" ]]; then
+        # Remove existing GEMINI_API_KEY line if present
+        grep -v "GEMINI_API_KEY=" "$env_file" > "${env_file}.tmp" || true
+        mv "${env_file}.tmp" "$env_file"
+    fi
+    
+    # Add the new API key
+    echo "GEMINI_API_KEY=$gemini_api_key" >> "$env_file"
+    
+    # Set the environment variable for this session
+    export GEMINI_API_KEY="$gemini_api_key"
+    
+    print_success ".env file created/updated with GEMINI_API_KEY"
+    print_status "API key will be automatically loaded in future runs"
+    
+    # Add .env to .gitignore if not already present
+    if [[ -f ".gitignore" ]]; then
+        if ! grep -q "^\.env$" ".gitignore"; then
+            echo ".env" >> ".gitignore"
+            print_success "Added .env to .gitignore for security"
+        fi
+    else
+        echo ".env" > ".gitignore"
+        print_success "Created .gitignore with .env entry"
+    fi
+}
+
 # Check if running as root (not recommended)
 if [ "$EUID" -eq 0 ]; then
     print_warning "Running as root. This is not recommended for development."
@@ -47,6 +115,9 @@ print_header "🚀 Serena + Gemini CLI Deployment Script"
 # Get current directory (project root)
 PROJECT_ROOT=$(pwd)
 print_status "Project root: $PROJECT_ROOT"
+
+# Step 0: Setup Gemini API Key
+setup_gemini_api_key
 
 # Step 1: Check system dependencies
 print_step "1. Checking system dependencies..."
@@ -467,4 +538,3 @@ echo "  • 'Create a memory note about this integration'"
 echo "  • 'Help me understand the codebase'"
 echo ""
 print_success "Happy coding! 🚀"
-
