@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "python3",
+      "args": [
+        "/app/serena-dxt/server/mcp_wrapper.py"
+      ],
+      "env": {
+        "PYTHONPATH": "/app/serena-dxt/server/lib",
+        "SERENA_LOG_LEVEL": "ERROR",
+        "SERENA_CONTEXT": "desktop-app"
+      },
+      "description": "Serena AI coding agent with 33 tools for file operations, symbol navigation, memory management, and project management",
+      "category": "development",
+      "tags": ["coding", "development", "ai-agent", "file-operations", "lsp", "memory"]
+    }
+  },
+  "groups": {
+    "development": {
+      "name": "Development Tools",
+      "description": "AI-powered development and coding assistance tools",
+      "servers": ["serena"]
+    }
+  }
+}
